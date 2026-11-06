@@ -1,0 +1,155 @@
+import { ACTIVITIES, scoreSite } from './activities.js';
+import { buildGrid, geocode } from './geo.js';
+import { fetchWeather, isoDate, selectedDates, siteDays, WEATHER_EMOJI } from './weather.js';
+
+const DEMO = new URLSearchParams(location.search).has('demo');
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  center: { lat: 48.137, lon: 11.575, label: 'München' },
+  radius: 200,
+  activity: 'climbing',
+  week: 0, friday: false, monday: false,
+  min: 50,
+  sites: [], dates: [], key: null,
+};
+
+const map = L.map('map').setView([state.center.lat, state.center.lon], 7);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18, attribution: '© OpenStreetMap-Mitwirkende',
+}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+const centerLayer = L.layerGroup().addTo(map);
+
+const colorFor = (s) => `hsl(${Math.round((Math.min(100, s) / 100) * 130)} 75% ${s > 40 && s < 70 ? 48 : 42}%)`;
+const stepFor = (r) => r / 5;
+const status = (msg, err = false) => { $('status').textContent = msg; $('status').className = 'muted' + (err ? ' error' : ''); };
+const fmtDay = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' });
+
+// ---------- UI ----------
+for (const [k, a] of Object.entries(ACTIVITIES)) {
+  const b = document.createElement('button');
+  b.dataset.v = k; b.textContent = `${a.icon} ${a.label}`;
+  if (k === state.activity) b.classList.add('on');
+  $('activity').append(b);
+}
+$('hint').textContent = ACTIVITIES[state.activity].hint;
+
+function seg(id, onPick) {
+  $(id).addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...$(id).children].forEach((c) => c.classList.toggle('on', c === b));
+    onPick(b.dataset.v);
+  });
+}
+seg('radius', (v) => { state.radius = +v; load(); });
+seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; render(); });
+$('week').onchange = (e) => { state.week = +e.target.value; load(); };
+$('fri').onchange = (e) => { state.friday = e.target.checked; load(); };
+$('mon').onchange = (e) => { state.monday = e.target.checked; load(); };
+$('min').oninput = (e) => { state.min = +e.target.value; $('min-val').textContent = state.min; render(); };
+
+$('search').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const res = await geocode($('q').value.trim());
+    const ul = $('results'); ul.replaceChildren();
+    if (!res.length) { status('Kein Ort gefunden.', true); ul.hidden = true; return; }
+    res.forEach((r) => {
+      const li = document.createElement('li'); li.textContent = r.label;
+      li.onclick = () => { ul.hidden = true; setCenter(r, true); };
+      ul.append(li);
+    });
+    ul.hidden = false;
+  } catch (err) { status(err.message, true); }
+});
+$('locate').onclick = () => {
+  if (!navigator.geolocation) return status('Geolocation nicht verfügbar.', true);
+  navigator.geolocation.getCurrentPosition(
+    (p) => setCenter({ lat: p.coords.latitude, lon: p.coords.longitude, label: 'Mein Standort' }, true),
+    () => status('Standort konnte nicht ermittelt werden.', true));
+};
+map.on('click', (e) => setCenter({ lat: e.latlng.lat, lon: e.latlng.lng, label: `${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}` }, false));
+
+function setCenter(c, zoom) {
+  state.center = c;
+  if (zoom) map.setView([c.lat, c.lon], state.radius > 200 ? 6 : 7);
+  load();
+}
+
+// ---------- Daten laden ----------
+let loadId = 0;
+async function load() {
+  const id = ++loadId;
+  const { center, radius } = state;
+  const dates = selectedDates({ weekOffset: state.week, friday: state.friday, monday: state.monday }).map(isoDate);
+  state.dates = dates;
+  $('dates').textContent = dates.map(fmtDay).join(' · ');
+  $('center-label').textContent = `📍 ${center.label} · ${radius} km`;
+
+  const horizon = new Date(); horizon.setDate(horizon.getDate() + 15);
+  if (dates[dates.length - 1] > isoDate(horizon)) { status('Der Zeitraum liegt außerhalb der 16-Tage-Vorhersage.', true); return; }
+
+  drawCenter();
+  const points = buildGrid(center.lat, center.lon, radius, stepFor(radius));
+  status(`Lade Wetter für ${points.length} Orte …`);
+  try {
+    const sites = await fetchWeather(points, dates, { demo: DEMO });
+    if (id !== loadId) return; // veraltete Antwort
+    state.sites = sites;
+    status(`${sites.length} Orte geladen${DEMO ? ' (Demo-Daten)' : ''}.`);
+    render();
+  } catch (err) { if (id === loadId) status(err.message, true); }
+}
+
+function drawCenter() {
+  centerLayer.clearLayers();
+  const { lat, lon } = state.center;
+  L.circle([lat, lon], { radius: state.radius * 1000, color: '#2563eb', weight: 1.5, dashArray: '6 6', fill: false, interactive: false }).addTo(centerLayer);
+  L.circleMarker([lat, lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: 1, interactive: false }).addTo(centerLayer);
+}
+
+// ---------- Darstellung ----------
+function render() {
+  layer.clearLayers();
+  const scored = state.sites.map((s) => {
+    const days = siteDays(s, state.dates);
+    return { site: s, days, ...scoreSite(state.activity, days) };
+  });
+  const cell = (stepFor(state.radius) * 1000) * 0.62;
+
+  scored.filter((x) => x.score >= state.min).forEach((x) => {
+    L.circle([x.site.lat, x.site.lon], {
+      radius: cell, stroke: false, fillColor: colorFor(x.score), fillOpacity: 0.55,
+    }).bindPopup(() => popup(x), { minWidth: 260 }).addTo(layer);
+  });
+
+  const top = [...scored].sort((a, b) => b.score - a.score).slice(0, 8).filter((x) => x.score >= state.min);
+  const ol = $('top'); ol.replaceChildren();
+  if (!top.length) ol.innerHTML = '<li class="muted" style="list-style:none">Keine Orte über dem Mindest-Score – Slider senken oder anderen Zeitraum wählen.</li>';
+  top.forEach((x, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<b style="color:${colorFor(x.score)}">${x.score}</b> ${Math.round(x.site.elevation)} m · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}`;
+    const m = L.marker([x.site.lat, x.site.lon], {
+      icon: L.divIcon({ className: '', html: `<div class="rank">${i + 1}</div>`, iconSize: [22, 22] }),
+    }).bindPopup(() => popup(x), { minWidth: 260 }).addTo(layer);
+    li.onclick = () => { map.setView([x.site.lat, x.site.lon], Math.max(map.getZoom(), 9)); m.openPopup(); };
+    ol.append(li);
+  });
+}
+
+function popup(x) {
+  const a = ACTIVITIES[state.activity];
+  const rows = x.days.map((d, i) => `<tr>
+      <td>${fmtDay(d.date)}</td><td>${WEATHER_EMOJI(d.code)}</td>
+      <td>${Math.round(d.tMin)}…${Math.round(d.tMax)}°</td>
+      <td>${d.precip.toFixed(1)} mm</td>
+      <td>${d.snow > 0 ? d.snow.toFixed(0) + ' cm ❄' : '–'}</td>
+      <td>${Math.round(d.gust)} km/h</td>
+      <td><b style="color:${colorFor(x.dayScores[i])}">${x.dayScores[i]}</b></td></tr>`).join('');
+  return `<div class="pop"><b>${a.icon} ${a.label}: Score ${x.score}/100</b><br>
+    <span class="muted">${Math.round(x.site.elevation)} m ü. M. · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}</span>
+    <table><tr><th>Tag</th><th></th><th>Temp</th><th>Regen</th><th>Schnee</th><th>Böen</th><th>Score</th></tr>${rows}</table></div>`;
+}
+
+load();

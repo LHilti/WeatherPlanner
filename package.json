@@ -1,0 +1,12 @@
+{
+  "name": "weatherplanner",
+  "version": "0.1.0",
+  "description": "Kartenbasierte Wetter-Planer-App: Wo ist im Umkreis das Wetter am Wochenende gut für Klettern, Skifahren, Mountainbiken …?",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test test/*.test.js"
+  }
+}
