@@ -1,6 +1,6 @@
 # ⛅ WeatherPlanner
 
-Kartenbasierte Web-App: Standort eingeben, Umkreis (100/200/300 km) und Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und die Karte zeigt, **wo im Umkreis das Wetter für deine Aktivität am besten ist**.
+Kartenbasierte Web-App: Standort eingeben, Umkreis (Regler 50–400 km) und Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und die Karte zeigt, **wo im Umkreis das Wetter für deine Aktivität am besten ist**.
 
 | Aktivität | Wichtig |
 |---|---|
@@ -16,6 +16,18 @@ Kartenbasierte Web-App: Standort eingeben, Umkreis (100/200/300 km) und Zeitraum
 - Pro Aktivität und Tag wird ein Score 0–100 berechnet (`js/activities.js`); der Gesamtscore ist Mittelwert, gewichtet mit dem schlechtesten Tag.
 - Farbige Kreise auf der Karte (rot → grün), Top-8-Liste, Klick auf einen Ort zeigt die Tageswerte.
 - Die Aktivität lässt sich umschalten, ohne neu zu laden.
+- **Gewichtung:** unter „Gewichtung anpassen“ lässt sich pro Faktor (Trockenheit, Temperatur, Wind, Sonne, Neuschnee …) per Dropdown einstellen, wie stark er einfließt (Ignorieren … Sehr wichtig). Wird im Browser gespeichert.
+- **Wettervorschau:** Tageskarten (Wetter, Temperatur, Regen, Schnee, Böen, Score) für den Standort bzw. den zuletzt angeklickten Ort.
+- **Spots:** Pins für Kletter-, Ski- und MTB-Gebiete (ein-/ausblendbar) als Orientierung.
+
+## Spot-Daten
+| Datei | Inhalt |
+|---|---|
+| `data/scraped-spots.json` | per Web-Scraping aus Wikipedia-Kategorien (MediaWiki-API) – Ski (AT/DE/CH), Klettern (DE/AT/IT/FR) |
+| `data/curated-spots.json` | von Hand ergänzt, **Koordinaten ungefähr**: MTB-Bikeparks, bekannte Klettergebiete, Skigebiete in IT/FR |
+
+`npm run scrape` holt die Wikipedia-Kategorien neu (`scripts/scrape-spots.mjs`, braucht Netzwerk) und überschreibt `scraped-spots.json`.
+Wikipedia hat kaum MTB-/Klettergebiete mit Koordinaten – für Vollständigkeit wäre eine Overpass-API-Abfrage (OpenStreetMap) der nächste Schritt.
 
 ## Lokal starten
 ```bash

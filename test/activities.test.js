@@ -50,3 +50,11 @@ test('selectedDates: Wochenende ± Fr/Mo', () => {
   assert.deepEqual(selectedDates({ today: wed, friday: true, monday: true }).map(isoDate),
     ['2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09']);
 });
+
+test('Gewichtung: Faktor auf "Ignorieren" blendet Regen aus, höhere Gewichtung verschärft ihn', () => {
+  const wet = { ...base, precip: 6, pop: 90 };
+  const normal = ACTIVITIES.climbing.scoreDay(wet);
+  assert.ok(ACTIVITIES.climbing.scoreDay(wet, { dry: 0 }) > normal);
+  assert.ok(ACTIVITIES.climbing.scoreDay(wet, { dry: 3 }) <= normal);
+  assert.equal(ACTIVITIES.climbing.scoreDay(wet, { dry: 0, rock: 0, temp: 0, wind: 0, sun: 0 }), 0);
+});

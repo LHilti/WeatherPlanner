@@ -1,7 +1,13 @@
-import { ACTIVITIES, scoreSite } from './activities.js';
+import { ACTIVITIES, WEIGHT_LEVELS, scoreSite } from './activities.js';
 import { buildGrid, geocode } from './geo.js';
 import { fetchWeather, isoDate, selectedDates, siteDays, WEATHER_EMOJI } from './weather.js';
 
+function loadWeights() {
+  try { return JSON.parse(localStorage.getItem('wp-weights')) || {}; } catch { return {}; }
+}
+function saveWeights() {
+  try { localStorage.setItem('wp-weights', JSON.stringify(state.weights)); } catch { /* ignorieren */ }
+}
 const DEMO = new URLSearchParams(location.search).has('demo');
 const $ = (id) => document.getElementById(id);
 
@@ -11,6 +17,8 @@ const state = {
   activity: 'climbing',
   week: 0, friday: false, monday: false,
   min: 50,
+  weights: loadWeights(),
+  selected: null, // Ort für die Wettervorschau (null = Standort)
   sites: [], dates: [], key: null,
 };
 
@@ -42,8 +50,26 @@ function seg(id, onPick) {
     onPick(b.dataset.v);
   });
 }
-seg('radius', (v) => { state.radius = +v; load(); });
-seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; render(); });
+$('radius').oninput = (e) => { $('radius-val').textContent = e.target.value; };
+$('radius').onchange = (e) => { state.radius = +e.target.value; state.selected = null; load(); };
+seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; buildWeights(); render(); });
+$('weights-reset').onclick = () => { delete state.weights[state.activity]; saveWeights(); buildWeights(); render(); };
+
+function buildWeights() {
+  const body = $('weights-body'); body.replaceChildren();
+  const mults = state.weights[state.activity] || {};
+  ACTIVITIES[state.activity].factors.forEach((f) => {
+    const row = document.createElement('div'); row.className = 'wrow';
+    const sel = document.createElement('select');
+    WEIGHT_LEVELS.forEach((l) => sel.add(new Option(l.label, l.value, false, l.value === (mults[f.key] ?? 1))));
+    sel.onchange = () => {
+      (state.weights[state.activity] ||= {})[f.key] = +sel.value;
+      saveWeights(); render();
+    };
+    row.innerHTML = `<span>${f.label}</span>`; row.append(sel); body.append(row);
+  });
+}
+buildWeights();
 $('week').onchange = (e) => { state.week = +e.target.value; load(); };
 $('fri').onchange = (e) => { state.friday = e.target.checked; load(); };
 $('mon').onchange = (e) => { state.monday = e.target.checked; load(); };
@@ -69,12 +95,51 @@ $('locate').onclick = () => {
     (p) => setCenter({ lat: p.coords.latitude, lon: p.coords.longitude, label: 'Mein Standort' }, true),
     () => status('Standort konnte nicht ermittelt werden.', true));
 };
-map.on('click', (e) => setCenter({ lat: e.latlng.lat, lon: e.latlng.lng, label: `${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}` }, false));
+map.on('click', (e) => { state.selected = null; setCenter({ lat: e.latlng.lat, lon: e.latlng.lng, label: `${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}` }, false); });
 
 function setCenter(c, zoom) {
   state.center = c;
+  state.selected = null;
   if (zoom) map.setView([c.lat, c.lon], state.radius > 200 ? 6 : 7);
-  load();
+  // ---------- Spots (Klettern / Ski / MTB) ----------
+const SPOT_TYPES = {
+  climb: { label: 'Klettergebiete', icon: '🧗', color: '#d97706' },
+  ski: { label: 'Skigebiete', icon: '⛷️', color: '#0284c7' },
+  mtb: { label: 'MTB-Gebiete', icon: '🚵', color: '#16a34a' },
+};
+const spotLayers = Object.fromEntries(Object.keys(SPOT_TYPES).map((t) => [t, L.layerGroup()]));
+
+function spotPopup(sp) {
+  const T = SPOT_TYPES[sp.t];
+  const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=12/${sp.lat}/${sp.lon}`;
+  const wiki = sp.w ? ` · <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(sp.w.replaceAll(' ', '_'))}" target="_blank" rel="noopener">Wikipedia</a>` : '';
+  const src = sp.note ? sp.note : 'Quelle: Wikipedia (gescrapt)';
+  return `<b>${T.icon} ${sp.n}</b><br><span class="muted">${T.label.replace('gebiete', 'gebiet')} · ${src}</span><br>`
+    + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
+}
+
+async function loadSpots() {
+  const lists = await Promise.all(['data/scraped-spots.json', 'data/curated-spots.json'].map((u) =>
+    fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
+  lists.flat().forEach((sp) => {
+    const T = SPOT_TYPES[sp.t]; if (!T) return;
+    L.marker([sp.lat, sp.lon], {
+      icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 30], popupAnchor: [0, -28],
+        html: `<div class="pin" style="background:${T.color}"><span>${T.icon}</span></div>` }),
+      title: sp.n,
+    }).bindPopup(spotPopup(sp)).addTo(spotLayers[sp.t]);
+  });
+}
+Object.entries(SPOT_TYPES).forEach(([t, T]) => {
+  const lab = document.createElement('label');
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+  cb.onchange = () => (cb.checked ? spotLayers[t].addTo(map) : map.removeLayer(spotLayers[t]));
+  lab.append(cb, ` ${T.icon} ${T.label}`); $('spot-toggles').append(lab);
+  spotLayers[t].addTo(map);
+});
+loadSpots();
+
+load();
 }
 
 // ---------- Daten laden ----------
@@ -114,14 +179,14 @@ function render() {
   layer.clearLayers();
   const scored = state.sites.map((s) => {
     const days = siteDays(s, state.dates);
-    return { site: s, days, ...scoreSite(state.activity, days) };
+    return { site: s, days, ...scoreSite(state.activity, days, state.weights[state.activity]) };
   });
   const cell = (stepFor(state.radius) * 1000) * 0.62;
 
   scored.filter((x) => x.score >= state.min).forEach((x) => {
     L.circle([x.site.lat, x.site.lon], {
       radius: cell, stroke: false, fillColor: colorFor(x.score), fillOpacity: 0.55,
-    }).bindPopup(() => popup(x), { minWidth: 260 }).addTo(layer);
+    }).bindPopup(() => popup(x), { minWidth: 320 }).on('popupopen', () => setPreview(x, 'ausgewählter Ort')).addTo(layer);
   });
 
   const top = [...scored].sort((a, b) => b.score - a.score).slice(0, 8).filter((x) => x.score >= state.min);
@@ -132,10 +197,29 @@ function render() {
     li.innerHTML = `<b style="color:${colorFor(x.score)}">${x.score}</b> ${Math.round(x.site.elevation)} m · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}`;
     const m = L.marker([x.site.lat, x.site.lon], {
       icon: L.divIcon({ className: '', html: `<div class="rank">${i + 1}</div>`, iconSize: [22, 22] }),
-    }).bindPopup(() => popup(x), { minWidth: 260 }).addTo(layer);
+    }).bindPopup(() => popup(x), { minWidth: 320 }).on('popupopen', () => setPreview(x, 'ausgewählter Ort')).addTo(layer);
     li.onclick = () => { map.setView([x.site.lat, x.site.lon], Math.max(map.getZoom(), 9)); m.openPopup(); };
     ol.append(li);
   });
+
+  // Vorschau: ausgewählter Ort, sonst der Gitterpunkt am Standort
+  const cur = state.selected ? scored.find((x) => x.site === state.selected.site) : null;
+  const here = cur || scored.reduce((best, x) => (!best || d2(x.site, state.center) < d2(best.site, state.center) ? x : best), null);
+  if (here) setPreview(here, cur ? 'ausgewählter Ort' : 'am Standort', !!cur);
+}
+
+const d2 = (a, c) => (a.lat - c.lat) ** 2 + (a.lon - c.lon) ** 2;
+
+function setPreview(x, title, keep = true) {
+  if (keep) state.selected = x;
+  $('preview-title').textContent = `· ${title}`;
+  $('preview').innerHTML = x.days.map((d, i) => `<div class="day">
+      <span class="sc" style="color:${colorFor(x.dayScores[i])}">${x.dayScores[i]}</span>
+      <div class="d">${fmtDay(d.date)}</div>
+      <div class="big">${WEATHER_EMOJI(d.code)}</div>
+      ${Math.round(d.tMin)}…${Math.round(d.tMax)} °C<br>
+      💧 ${d.precip.toFixed(1)} mm${d.snow > 0 ? `<br>❄ ${d.snow.toFixed(0)} cm` : ''}<br>
+      💨 ${Math.round(d.gust)} km/h</div>`).join('');
 }
 
 function popup(x) {
@@ -151,5 +235,43 @@ function popup(x) {
     <span class="muted">${Math.round(x.site.elevation)} m ü. M. · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}</span>
     <table><tr><th>Tag</th><th></th><th>Temp</th><th>Regen</th><th>Schnee</th><th>Böen</th><th>Score</th></tr>${rows}</table></div>`;
 }
+
+// ---------- Spots (Klettern / Ski / MTB) ----------
+const SPOT_TYPES = {
+  climb: { label: 'Klettergebiete', icon: '🧗', color: '#d97706' },
+  ski: { label: 'Skigebiete', icon: '⛷️', color: '#0284c7' },
+  mtb: { label: 'MTB-Gebiete', icon: '🚵', color: '#16a34a' },
+};
+const spotLayers = Object.fromEntries(Object.keys(SPOT_TYPES).map((t) => [t, L.layerGroup()]));
+
+function spotPopup(sp) {
+  const T = SPOT_TYPES[sp.t];
+  const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=12/${sp.lat}/${sp.lon}`;
+  const wiki = sp.w ? ` · <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(sp.w.replaceAll(' ', '_'))}" target="_blank" rel="noopener">Wikipedia</a>` : '';
+  const src = sp.note ? sp.note : 'Quelle: Wikipedia (gescrapt)';
+  return `<b>${T.icon} ${sp.n}</b><br><span class="muted">${T.label.replace('gebiete', 'gebiet')} · ${src}</span><br>`
+    + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
+}
+
+async function loadSpots() {
+  const lists = await Promise.all(['data/scraped-spots.json', 'data/curated-spots.json'].map((u) =>
+    fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
+  lists.flat().forEach((sp) => {
+    const T = SPOT_TYPES[sp.t]; if (!T) return;
+    L.marker([sp.lat, sp.lon], {
+      icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 30], popupAnchor: [0, -28],
+        html: `<div class="pin" style="background:${T.color}"><span>${T.icon}</span></div>` }),
+      title: sp.n,
+    }).bindPopup(spotPopup(sp)).addTo(spotLayers[sp.t]);
+  });
+}
+Object.entries(SPOT_TYPES).forEach(([t, T]) => {
+  const lab = document.createElement('label');
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+  cb.onchange = () => (cb.checked ? spotLayers[t].addTo(map) : map.removeLayer(spotLayers[t]));
+  lab.append(cb, ` ${T.icon} ${T.label}`); $('spot-toggles').append(lab);
+  spotLayers[t].addTo(map);
+});
+loadSpots();
 
 load();

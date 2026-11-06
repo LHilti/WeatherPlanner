@@ -24,12 +24,8 @@
     </section>
 
     <section>
-      <label>Umkreis</label>
-      <div class="seg" id="radius">
-        <button data-v="100">100 km</button>
-        <button data-v="200" class="on">200 km</button>
-        <button data-v="300">300 km</button>
-      </div>
+      <label for="radius">Umkreis: <b id="radius-val">200</b> km</label>
+      <input type="range" id="radius" min="50" max="400" step="10" value="200">
     </section>
 
     <section>
@@ -49,6 +45,16 @@
       <label>Aktivität</label>
       <div class="seg wrap" id="activity"></div>
       <div id="hint" class="muted"></div>
+      <details id="weights">
+        <summary>Gewichtung anpassen</summary>
+        <div id="weights-body"></div>
+        <button type="button" id="weights-reset">Zurücksetzen</button>
+      </details>
+    </section>
+
+    <section>
+      <label>Wettervorschau <span id="preview-title" class="muted"></span></label>
+      <div id="preview" class="muted">Lade …</div>
     </section>
 
     <section>
@@ -60,6 +66,12 @@
     <section>
       <label>Beste Orte</label>
       <ol id="top"></ol>
+    </section>
+
+    <section>
+      <label>Spots auf der Karte</label>
+      <div class="checks" id="spot-toggles"></div>
+      <div class="muted">Pins: gescrapt aus Wikipedia bzw. kuratiert (Koordinaten ungefähr) – bunte Pins = Gebiete, Kreise = Wetter-Score.</div>
     </section>
 
     <div id="status" class="muted"></div>

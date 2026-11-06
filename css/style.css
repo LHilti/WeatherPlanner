@@ -23,6 +23,19 @@ select { width:100%; margin-bottom:6px; }
 #results li { padding:7px 10px; cursor:pointer; }
 #results li:hover { background:var(--line); }
 input[type=range] { width:100%; padding:0; }
+details { margin-top:8px; }
+summary { cursor:pointer; color:var(--accent); font-size:13px; }
+.wrow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:5px 0; }
+.wrow span { font-size:13px; }
+.wrow select { width:auto; margin:0; padding:4px 6px; }
+#weights button { margin-top:6px; font-size:12.5px; padding:4px 10px; }
+#preview { display:grid; grid-template-columns:repeat(auto-fit,minmax(88px,1fr)); gap:6px; }
+.day { border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:12.5px; color:var(--fg); line-height:1.35; }
+.day .d { font-weight:600; }
+.day .big { font-size:20px; }
+.day .sc { float:right; font-weight:700; }
+.pin { width:26px; height:26px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.45); }
+.pin span { display:block; transform:rotate(45deg); text-align:center; line-height:22px; font-size:13px; }
 .legend { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
 .legend i { flex:1; height:8px; border-radius:4px; background:linear-gradient(90deg,hsl(0 75% 50%),hsl(55 85% 50%),hsl(130 65% 40%)); }
 #top { margin:0; padding-left:22px; }
