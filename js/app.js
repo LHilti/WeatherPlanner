@@ -234,13 +234,19 @@ function spotPopup(sp, name) {
     + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
 }
 
+/** Geschätzte Gebietsgröße (Routen): echte Zahl aus OSM, sonst Näherung – Wikipedia-/kuratierte Gebiete sind meist bekannt und groß. */
+const sizeOf = (sp) => sp.r ?? (sp.w || sp.note ? 100 : sp.d?.length ? 15 : 5);
+
 function spotMarker(sp) {
   const T = SPOT_TYPES[sp.t];
+  const est = sizeOf(sp);
+  const px = est >= 100 ? 34 : est >= 20 ? 28 : 22;
   const fallback = `${T.label} (${sp.lat.toFixed(2)}, ${sp.lon.toFixed(2)})`;
   const m = L.marker([sp.lat, sp.lon], {
-    icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 30], popupAnchor: [0, -28],
-      html: `<div class="pin" style="background:${T.color}"><span>${T.icon}</span></div>` }),
+    icon: L.divIcon({ className: '', iconSize: [px, px], iconAnchor: [px / 2, px + 4], popupAnchor: [0, -px],
+      html: `<div class="pin" style="background:${T.color};width:${px}px;height:${px}px"><span style="line-height:${px - 4}px;font-size:${Math.round(px / 2)}px">${T.icon}</span></div>` }),
     title: sp.n || T.label,
+    zIndexOffset: Math.min(est, 1000),
   });
   m.bindPopup(spotPopup(sp, sp.n || fallback));
   if (!sp.n) {
@@ -256,9 +262,10 @@ function renderSpots() {
   spotLayer.clearLayers();
   const type = ACTIVITY_SPOT[state.activity];
   $('disciplines').hidden = type !== 'climb';
+  $('size-filter').hidden = type !== 'climb';
   if (!$('spots-on').checked || !type) { $('spot-count').textContent = type ? '' : 'Für diese Aktivität gibt es keine Spot-Pins.'; return; }
   const shown = allSpots.filter((sp) => sp.t === type
-    && (type !== 'climb' || !sp.d?.length || sp.d.some((d) => disciplineOn.has(d)))); // ohne Angabe: immer zeigen
+    && (type !== 'climb' || ((!sp.d?.length || sp.d.some((d) => disciplineOn.has(d))) && sizeOf(sp) >= +$('min-routes').value))); // ohne Disziplin-Angabe: immer zeigen
   spotLayer.addLayers(shown.map(spotMarker));
   $('spot-count').textContent = `${shown.length} ${SPOT_TYPES[type].label}e angezeigt`;
 }
@@ -270,6 +277,7 @@ Object.entries(DISCIPLINES).forEach(([k, label]) => {
   lab.append(cb, ` ${label}`); $('disciplines').append(lab);
 });
 $('spots-on').onchange = renderSpots;
+$('min-routes').onchange = renderSpots;
 
 async function loadSpots() {
   const files = ['data/scraped-spots.json', 'data/curated-spots.json', 'data/osm-spots.json'];

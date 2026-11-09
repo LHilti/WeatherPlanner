@@ -74,6 +74,14 @@
       <label>Spots auf der Karte</label>
       <label class="inline"><input type="checkbox" id="spots-on" checked> Spots zur gewählten Aktivität anzeigen</label>
       <div id="disciplines" class="checks" hidden></div>
+      <div id="size-filter" hidden>
+        <label for="min-routes" class="inline">Mindestgröße (Routen)</label>
+        <select id="min-routes">
+          <option value="0">Alle Gebiete</option>
+          <option value="20">ab ca. 20 Routen</option>
+          <option value="100">ab ca. 100 Routen (große Gebiete)</option>
+        </select>
+      </div>
       <div id="spot-count" class="muted"></div>
       <div class="muted">Pins zeigen nur Gebiete der gewählten Aktivität. Quellen: Wikipedia, OpenStreetMap, kuratiert (Koordinaten ungefähr).</div>
     </section>

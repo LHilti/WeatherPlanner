@@ -31,6 +31,14 @@ Kartenbasierte Web-App: Standort eingeben, Umkreis (Regler 50–400 km) und Zeit
 `npm run scrape:osm` (`scripts/scrape-osm.mjs`) lädt Europa in 5°-Kacheln, ist fortsetzbar (Cache in `data/.cache`), nutzt mehrere Overpass-Mirrors mit Retry/Backoff und fasst Duplikate zusammen. Daten © OpenStreetMap-Mitwirkende (ODbL).
 
 `npm run scrape` holt die Wikipedia-Kategorien neu (`scripts/scrape-spots.mjs`, braucht Netzwerk) und überschreibt `scraped-spots.json`.
+### Geprüfte Quellen
+- **OpenBeta** (offene API): funktioniert, enthält für Europa aber nur leere Gerüst-Einträge (0 Routen, Platzhalter-Koordinaten wie Landesmitte) – deshalb nicht eingebunden.
+- **Outdooractive**: `robots.txt` sperrt `/climbingspot/`, `/climbingroute/` und `/api/` ausdrücklich – nicht gescrapt. Legitimer Weg: offizielle Outdooractive-API mit Partner-Key.
+- **UKClimbing**: Nutzungsbedingungen waren für den Abruf gesperrt (bot_blocked), daher nicht verifizierbar – nicht gescrapt.
+- **DAV Felsinfo**: enthält Regionen-Infos (Sperrungen, Regeln), aber keine Koordinaten/Routenzahlen.
+
+Größe der Pins/Filter „Mindestgröße“ basieren auf der Routenzahl (OSM `climbing:routes`), sonst auf einer Schätzung (Wikipedia-/kuratierte Gebiete = groß).
+
 theCrag blockiert Bots und Mountain Project deckt Europa kaum ab – deshalb ist OpenStreetMap die Hauptquelle für Klettergebiete.
 
 ## Lokal starten
