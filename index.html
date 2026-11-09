@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WeatherPlanner</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -70,8 +72,10 @@
 
     <section>
       <label>Spots auf der Karte</label>
-      <div class="checks" id="spot-toggles"></div>
-      <div class="muted">Pins: gescrapt aus Wikipedia bzw. kuratiert (Koordinaten ungefähr) – bunte Pins = Gebiete, Kreise = Wetter-Score.</div>
+      <label class="inline"><input type="checkbox" id="spots-on" checked> Spots zur gewählten Aktivität anzeigen</label>
+      <div id="disciplines" class="checks" hidden></div>
+      <div id="spot-count" class="muted"></div>
+      <div class="muted">Pins zeigen nur Gebiete der gewählten Aktivität. Quellen: Wikipedia, OpenStreetMap, kuratiert (Koordinaten ungefähr).</div>
     </section>
 
     <div id="status" class="muted"></div>
@@ -79,6 +83,7 @@
   </aside>
   <main id="map"></main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

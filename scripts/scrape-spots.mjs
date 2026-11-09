@@ -13,8 +13,8 @@ export const CATEGORIES = [
     .map((c) => ({ cat: `Mountain_biking_in_${c}`, t: 'mtb' })),
   { cat: 'Mountain_biking_venues', t: 'mtb' },
 ];
-// Grobe Eingrenzung auf Mitteleuropa/Alpen, damit die Karte übersichtlich bleibt.
-export const BBOX = { minLat: 43, maxLat: 53, minLon: 2, maxLon: 18 };
+// Eingrenzung auf Europa.
+export const BBOX = { minLat: 34, maxLat: 72, minLon: -11, maxLon: 35 }; // Europa
 
 /** Wandelt eine MediaWiki-Antwort (generator=categorymembers&prop=coordinates) in Spot-Objekte um. */
 export function parsePages(json, t) {

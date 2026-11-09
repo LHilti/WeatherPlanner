@@ -52,7 +52,7 @@ function seg(id, onPick) {
 }
 $('radius').oninput = (e) => { $('radius-val').textContent = e.target.value; };
 $('radius').onchange = (e) => { state.radius = +e.target.value; state.selected = null; load(); };
-seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; buildWeights(); render(); });
+seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; buildWeights(); render(); renderSpots(); });
 $('weights-reset').onclick = () => { delete state.weights[state.activity]; saveWeights(); buildWeights(); render(); };
 
 function buildWeights() {
@@ -101,45 +101,7 @@ function setCenter(c, zoom) {
   state.center = c;
   state.selected = null;
   if (zoom) map.setView([c.lat, c.lon], state.radius > 200 ? 6 : 7);
-  // ---------- Spots (Klettern / Ski / MTB) ----------
-const SPOT_TYPES = {
-  climb: { label: 'Klettergebiete', icon: '🧗', color: '#d97706' },
-  ski: { label: 'Skigebiete', icon: '⛷️', color: '#0284c7' },
-  mtb: { label: 'MTB-Gebiete', icon: '🚵', color: '#16a34a' },
-};
-const spotLayers = Object.fromEntries(Object.keys(SPOT_TYPES).map((t) => [t, L.layerGroup()]));
-
-function spotPopup(sp) {
-  const T = SPOT_TYPES[sp.t];
-  const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=12/${sp.lat}/${sp.lon}`;
-  const wiki = sp.w ? ` · <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(sp.w.replaceAll(' ', '_'))}" target="_blank" rel="noopener">Wikipedia</a>` : '';
-  const src = sp.note ? sp.note : 'Quelle: Wikipedia (gescrapt)';
-  return `<b>${T.icon} ${sp.n}</b><br><span class="muted">${T.label.replace('gebiete', 'gebiet')} · ${src}</span><br>`
-    + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
-}
-
-async function loadSpots() {
-  const lists = await Promise.all(['data/scraped-spots.json', 'data/curated-spots.json'].map((u) =>
-    fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
-  lists.flat().forEach((sp) => {
-    const T = SPOT_TYPES[sp.t]; if (!T) return;
-    L.marker([sp.lat, sp.lon], {
-      icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 30], popupAnchor: [0, -28],
-        html: `<div class="pin" style="background:${T.color}"><span>${T.icon}</span></div>` }),
-      title: sp.n,
-    }).bindPopup(spotPopup(sp)).addTo(spotLayers[sp.t]);
-  });
-}
-Object.entries(SPOT_TYPES).forEach(([t, T]) => {
-  const lab = document.createElement('label');
-  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
-  cb.onchange = () => (cb.checked ? spotLayers[t].addTo(map) : map.removeLayer(spotLayers[t]));
-  lab.append(cb, ` ${T.icon} ${T.label}`); $('spot-toggles').append(lab);
-  spotLayers[t].addTo(map);
-});
-loadSpots();
-
-load();
+  load();
 }
 
 // ---------- Daten laden ----------
@@ -238,40 +200,82 @@ function popup(x) {
 
 // ---------- Spots (Klettern / Ski / MTB) ----------
 const SPOT_TYPES = {
-  climb: { label: 'Klettergebiete', icon: '🧗', color: '#d97706' },
-  ski: { label: 'Skigebiete', icon: '⛷️', color: '#0284c7' },
-  mtb: { label: 'MTB-Gebiete', icon: '🚵', color: '#16a34a' },
+  climb: { label: 'Klettergebiet', icon: '🧗', color: '#d97706' },
+  ski: { label: 'Skigebiet', icon: '⛷️', color: '#0284c7' },
+  mtb: { label: 'MTB-Gebiet', icon: '🚵', color: '#16a34a' },
 };
-const spotLayers = Object.fromEntries(Object.keys(SPOT_TYPES).map((t) => [t, L.layerGroup()]));
+const ACTIVITY_SPOT = { climbing: 'climb', skiing: 'ski', mtb: 'mtb' }; // Wandern/Baden haben keine Spots
+const DISCIPLINES = { sport: 'Sportklettern', trad: 'Trad / Mobile Sicherung', alpine: 'Alpinklettern', boulder: 'Bouldern' };
+const disciplineOn = new Set(Object.keys(DISCIPLINES));
+let allSpots = [];
+const spotLayer = L.markerClusterGroup ? L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 45 }).addTo(map) : L.layerGroup().addTo(map);
 
-function spotPopup(sp) {
+const placeCache = new Map();
+/** Spots ohne Namen: Ortsname per Nominatim-Rückwärtssuche (nur beim Klick, 1 Anfrage je Spot). */
+async function placeName(sp) {
+  const key = `${sp.lat},${sp.lon}`;
+  if (!placeCache.has(key)) {
+    placeCache.set(key, fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=de&lat=${sp.lat}&lon=${sp.lon}`)
+      .then((r) => r.json())
+      .then((j) => { const a = j.address || {}; return a.hamlet || a.village || a.town || a.city || a.municipality || a.county || null; })
+      .catch(() => null));
+  }
+  return placeCache.get(key);
+}
+
+function spotPopup(sp, name) {
   const T = SPOT_TYPES[sp.t];
-  const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=12/${sp.lat}/${sp.lon}`;
+  const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=13/${sp.lat}/${sp.lon}`;
   const wiki = sp.w ? ` · <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(sp.w.replaceAll(' ', '_'))}" target="_blank" rel="noopener">Wikipedia</a>` : '';
-  const src = sp.note ? sp.note : 'Quelle: Wikipedia (gescrapt)';
-  return `<b>${T.icon} ${sp.n}</b><br><span class="muted">${T.label.replace('gebiete', 'gebiet')} · ${src}</span><br>`
+  const src = sp.note ? sp.note : sp.o ? 'Quelle: OpenStreetMap' : 'Quelle: Wikipedia';
+  const disc = sp.d?.length ? `<br>Disziplinen: ${sp.d.map((d) => DISCIPLINES[d]).join(', ')}` : '';
+  const routes = sp.r ? `<br>Routen: ${sp.r}` : '';
+  return `<b>${T.icon} <span class="spot-name">${name}</span></b><br><span class="muted">${T.label} · ${src}</span>${disc}${routes}<br>`
     + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
 }
 
-async function loadSpots() {
-  const lists = await Promise.all(['data/scraped-spots.json', 'data/curated-spots.json'].map((u) =>
-    fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
-  lists.flat().forEach((sp) => {
-    const T = SPOT_TYPES[sp.t]; if (!T) return;
-    L.marker([sp.lat, sp.lon], {
-      icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 30], popupAnchor: [0, -28],
-        html: `<div class="pin" style="background:${T.color}"><span>${T.icon}</span></div>` }),
-      title: sp.n,
-    }).bindPopup(spotPopup(sp)).addTo(spotLayers[sp.t]);
+function spotMarker(sp) {
+  const T = SPOT_TYPES[sp.t];
+  const fallback = `${T.label} (${sp.lat.toFixed(2)}, ${sp.lon.toFixed(2)})`;
+  const m = L.marker([sp.lat, sp.lon], {
+    icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 30], popupAnchor: [0, -28],
+      html: `<div class="pin" style="background:${T.color}"><span>${T.icon}</span></div>` }),
+    title: sp.n || T.label,
   });
+  m.bindPopup(spotPopup(sp, sp.n || fallback));
+  if (!sp.n) {
+    m.on('popupopen', async () => {
+      const place = await placeName(sp);
+      if (place) m.getPopup().setContent(spotPopup(sp, `${T.label} bei ${place}`));
+    });
+  }
+  return m;
 }
-Object.entries(SPOT_TYPES).forEach(([t, T]) => {
-  const lab = document.createElement('label');
-  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
-  cb.onchange = () => (cb.checked ? spotLayers[t].addTo(map) : map.removeLayer(spotLayers[t]));
-  lab.append(cb, ` ${T.icon} ${T.label}`); $('spot-toggles').append(lab);
-  spotLayers[t].addTo(map);
-});
-loadSpots();
 
+function renderSpots() {
+  spotLayer.clearLayers();
+  const type = ACTIVITY_SPOT[state.activity];
+  $('disciplines').hidden = type !== 'climb';
+  if (!$('spots-on').checked || !type) { $('spot-count').textContent = type ? '' : 'Für diese Aktivität gibt es keine Spot-Pins.'; return; }
+  const shown = allSpots.filter((sp) => sp.t === type
+    && (type !== 'climb' || !sp.d?.length || sp.d.some((d) => disciplineOn.has(d)))); // ohne Angabe: immer zeigen
+  spotLayer.addLayers(shown.map(spotMarker));
+  $('spot-count').textContent = `${shown.length} ${SPOT_TYPES[type].label}e angezeigt`;
+}
+
+Object.entries(DISCIPLINES).forEach(([k, label]) => {
+  const lab = document.createElement('label'); lab.className = 'inline';
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+  cb.onchange = () => { cb.checked ? disciplineOn.add(k) : disciplineOn.delete(k); renderSpots(); };
+  lab.append(cb, ` ${label}`); $('disciplines').append(lab);
+});
+$('spots-on').onchange = renderSpots;
+
+async function loadSpots() {
+  const files = ['data/scraped-spots.json', 'data/curated-spots.json', 'data/osm-spots.json'];
+  const lists = await Promise.all(files.map((u) => fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
+  allSpots = lists.flat().filter((sp) => SPOT_TYPES[sp.t]);
+  renderSpots();
+}
+loadSpots();
 load();

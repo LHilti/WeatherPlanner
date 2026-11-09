@@ -8,6 +8,7 @@
   "scripts": {
     "start": "python3 -m http.server 8080",
     "test": "node --test test/*.test.js",
-    "scrape": "node scripts/scrape-spots.mjs"
+    "scrape": "node scripts/scrape-spots.mjs",
+    "scrape:osm": "node scripts/scrape-osm.mjs"
   }
 }

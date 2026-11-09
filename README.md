@@ -18,7 +18,7 @@ Kartenbasierte Web-App: Standort eingeben, Umkreis (Regler 50–400 km) und Zeit
 - Die Aktivität lässt sich umschalten, ohne neu zu laden.
 - **Gewichtung:** unter „Gewichtung anpassen“ lässt sich pro Faktor (Trockenheit, Temperatur, Wind, Sonne, Neuschnee …) per Dropdown einstellen, wie stark er einfließt (Ignorieren … Sehr wichtig). Wird im Browser gespeichert.
 - **Wettervorschau:** Tageskarten (Wetter, Temperatur, Regen, Schnee, Böen, Score) für den Standort bzw. den zuletzt angeklickten Ort.
-- **Spots:** Pins für Kletter-, Ski- und MTB-Gebiete (ein-/ausblendbar) als Orientierung.
+- **Spots:** Pins nur für die gewählte Aktivität (Klettern → Klettergebiete, Skifahren → Skigebiete, MTB → Bikeparks), gruppiert in Clustern. Beim Klettern lässt sich nach Disziplin filtern: Sportklettern, Trad, Alpin, Bouldern. Spots ohne Namen bekommen beim Klick per Ortssuche einen Namen („Klettergebiet bei …“).
 
 ## Spot-Daten
 | Datei | Inhalt |
@@ -26,8 +26,12 @@ Kartenbasierte Web-App: Standort eingeben, Umkreis (Regler 50–400 km) und Zeit
 | `data/scraped-spots.json` | per Web-Scraping aus Wikipedia-Kategorien (MediaWiki-API) – Ski (AT/DE/CH), Klettern (DE/AT/IT/FR) |
 | `data/curated-spots.json` | von Hand ergänzt, **Koordinaten ungefähr**: MTB-Bikeparks, bekannte Klettergebiete, Skigebiete in IT/FR |
 
+| `data/osm-spots.json` | Europa-weit aus OpenStreetMap (Overpass): Klettergebiete mit Disziplinen, Skigebiete – erzeugt mit `npm run scrape:osm` (Datei wird beim Scrapen erzeugt, ist noch nicht im Repo) |
+
+`npm run scrape:osm` (`scripts/scrape-osm.mjs`) lädt Europa in 5°-Kacheln, ist fortsetzbar (Cache in `data/.cache`), nutzt mehrere Overpass-Mirrors mit Retry/Backoff und fasst Duplikate zusammen. Daten © OpenStreetMap-Mitwirkende (ODbL).
+
 `npm run scrape` holt die Wikipedia-Kategorien neu (`scripts/scrape-spots.mjs`, braucht Netzwerk) und überschreibt `scraped-spots.json`.
-Wikipedia hat kaum MTB-/Klettergebiete mit Koordinaten – für Vollständigkeit wäre eine Overpass-API-Abfrage (OpenStreetMap) der nächste Schritt.
+theCrag blockiert Bots und Mountain Project deckt Europa kaum ab – deshalb ist OpenStreetMap die Hauptquelle für Klettergebiete.
 
 ## Lokal starten
 ```bash
