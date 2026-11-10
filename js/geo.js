@@ -10,20 +10,60 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
   return 6371 * 2 * Math.asin(Math.sqrt(a));
 }
 
-/** Gitterpunkte (Abstand stepKm) innerhalb des Kreises um das Zentrum. */
-export function buildGrid(lat, lon, radiusKm, stepKm) {
+const STEPS = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 4, 8]; // Gitterweite in Grad Breite
+const LON_FACTOR = 1.5; // Längengrade sind in Europa ~1,5× „kürzer“ → annähernd quadratische Zellen
+
+/**
+ * Gitterpunkte für einen Kartenausschnitt. Die Punkte liegen auf einem festen, weltweiten Raster
+ * (Vielfache der Schrittweite), damit beim Verschieben der Karte bereits geladene Punkte
+ * wiederverwendet werden können. Die Schrittweite wird so gewählt, dass höchstens maxPoints entstehen.
+ */
+export function gridForBounds({ south, west, north, east }, maxPoints = 100) {
+  south = Math.max(south, -85); north = Math.min(north, 85);
+  let step = STEPS[STEPS.length - 1];
+  for (const st of STEPS) {
+    const n = (Math.floor(north / st) - Math.ceil(south / st) + 1)
+      * (Math.floor(east / (st * LON_FACTOR)) - Math.ceil(west / (st * LON_FACTOR)) + 1);
+    if (n <= maxPoints) { step = st; break; }
+  }
+  const lonStep = step * LON_FACTOR;
   const points = [];
-  const n = Math.ceil(radiusKm / stepKm);
-  const dLat = stepKm / KM_PER_DEG;
-  const dLon = stepKm / (KM_PER_DEG * Math.cos((lat * Math.PI) / 180));
-  for (let i = -n; i <= n; i++) {
-    for (let j = -n; j <= n; j++) {
-      const p = { lat: lat + i * dLat, lon: lon + j * dLon };
-      if (Math.abs(p.lat) > 89) continue;
-      if (haversineKm(lat, lon, p.lat, p.lon) <= radiusKm) points.push(p);
+  for (let i = Math.ceil(south / step); i <= Math.floor(north / step); i++) {
+    for (let j = Math.ceil(west / lonStep); j <= Math.floor(east / lonStep); j++) {
+      if (points.length >= maxPoints * 2) break; // Schutz bei extrem weitem Zoom
+      points.push({ lat: +(i * step).toFixed(4), lon: +(j * lonStep).toFixed(4) });
     }
   }
-  return points;
+  return { points, step, lonStep };
+}
+
+/** Grobe Schätzung ohne Routing: Straße ≈ 1,3 × Luftlinie, Schnitt ≈ 75 km/h. */
+export function estimateDrive(from, to) {
+  const km = haversineKm(from.lat, from.lon, to.lat, to.lon) * 1.3;
+  return { km, min: (km / 75) * 60, estimated: true };
+}
+
+const routeCache = new Map();
+/** Fahrstrecke/-zeit mit dem Auto über OSRM (öffentlicher Demo-Server, kein Key); bei Fehler Schätzung. */
+export function drivingRoute(from, to) {
+  const key = [from.lat, from.lon, to.lat, to.lon].map((v) => v.toFixed(3)).join(',');
+  if (!routeCache.has(key)) {
+    const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+    routeCache.set(key, fetch(url)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+      .then((j) => {
+        if (j.code !== 'Ok' || !j.routes?.length) throw new Error(j.code);
+        return { km: j.routes[0].distance / 1000, min: j.routes[0].duration / 60, estimated: false };
+      })
+      .catch(() => { routeCache.delete(key); return estimateDrive(from, to); }));
+  }
+  return routeCache.get(key);
+}
+
+export function formatDrive({ km, min }) {
+  const m = Math.round(min / 5) * 5;
+  const t = m < 60 ? `${Math.max(m, 5)} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  return `${t} · ${Math.round(km)} km`;
 }
 
 export async function geocode(query) {

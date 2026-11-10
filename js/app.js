@@ -1,5 +1,5 @@
 import { ACTIVITIES, WEIGHT_LEVELS, scoreSite } from './activities.js';
-import { buildGrid, geocode } from './geo.js';
+import { drivingRoute, estimateDrive, formatDrive, geocode, gridForBounds } from './geo.js';
 import { fetchWeather, isoDate, selectedDates, siteDays, WEATHER_EMOJI } from './weather.js';
 
 function loadWeights() {
@@ -13,13 +13,12 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   center: { lat: 48.137, lon: 11.575, label: 'München' },
-  radius: 200,
   activity: 'climbing',
   week: 0, friday: false, monday: false,
   min: 50,
   weights: loadWeights(),
   selected: null, // Ort für die Wettervorschau (null = Standort)
-  sites: [], dates: [], key: null,
+  sites: [], centerSite: null, dates: [], step: 0.5,
 };
 
 const map = L.map('map').setView([state.center.lat, state.center.lon], 7);
@@ -30,7 +29,6 @@ const layer = L.layerGroup().addTo(map);
 const centerLayer = L.layerGroup().addTo(map);
 
 const colorFor = (s) => `hsl(${Math.round((Math.min(100, s) / 100) * 130)} 75% ${s > 40 && s < 70 ? 48 : 42}%)`;
-const stepFor = (r) => r / 5;
 const status = (msg, err = false) => { $('status').textContent = msg; $('status').className = 'muted' + (err ? ' error' : ''); };
 const fmtDay = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' });
 
@@ -50,8 +48,6 @@ function seg(id, onPick) {
     onPick(b.dataset.v);
   });
 }
-$('radius').oninput = (e) => { $('radius-val').textContent = e.target.value; };
-$('radius').onchange = (e) => { state.radius = +e.target.value; state.selected = null; load(); };
 seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; buildWeights(); render(); renderSpots(); });
 $('weights-reset').onclick = () => { delete state.weights[state.activity]; saveWeights(); buildWeights(); render(); };
 
@@ -95,45 +91,83 @@ $('locate').onclick = () => {
     (p) => setCenter({ lat: p.coords.latitude, lon: p.coords.longitude, label: 'Mein Standort' }, true),
     () => status('Standort konnte nicht ermittelt werden.', true));
 };
-map.on('click', (e) => { state.selected = null; setCenter({ lat: e.latlng.lat, lon: e.latlng.lng, label: `${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}` }, false); });
+map.on('contextmenu', (e) => setCenter({ lat: e.latlng.lat, lon: e.latlng.lng, label: `${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}` }, false));
 
 function setCenter(c, zoom) {
   state.center = c;
   state.selected = null;
-  if (zoom) map.setView([c.lat, c.lon], state.radius > 200 ? 6 : 7);
+  state.centerSite = null;
+  drawCenter();
+  if (zoom) map.setView([c.lat, c.lon], Math.max(map.getZoom(), 7)); // löst über moveend das Nachladen aus
   load();
+  renderSpots(); // Fahrzeiten in den Spot-Popups hängen vom Standort ab
 }
 
 // ---------- Daten laden ----------
+const siteCache = new Map(); // "lat,lon|start|end" → Wetterdaten eines Punkts
 let loadId = 0;
+let popupOpen = false;
+let pendingRender = false;
+map.on('popupopen', () => { popupOpen = true; });
+map.on('popupclose', () => { popupOpen = false; if (pendingRender) { pendingRender = false; render(); } });
+let moveTimer;
+map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(load, 500); });
+
 async function load() {
   const id = ++loadId;
-  const { center, radius } = state;
+  const { center } = state;
   const dates = selectedDates({ weekOffset: state.week, friday: state.friday, monday: state.monday }).map(isoDate);
   state.dates = dates;
   $('dates').textContent = dates.map(fmtDay).join(' · ');
-  $('center-label').textContent = `📍 ${center.label} · ${radius} km`;
+  $('center-label').textContent = `📍 ${center.label}`;
 
   const horizon = new Date(); horizon.setDate(horizon.getDate() + 15);
   if (dates[dates.length - 1] > isoDate(horizon)) { status('Der Zeitraum liegt außerhalb der 16-Tage-Vorhersage.', true); return; }
 
-  drawCenter();
-  const points = buildGrid(center.lat, center.lon, radius, stepFor(radius));
-  status(`Lade Wetter für ${points.length} Orte …`);
+  const b = map.getBounds();
+  const { points, step } = gridForBounds({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() });
+  const key = (p) => `${p.lat},${p.lon}|${dates[0]}|${dates[dates.length - 1]}`;
+  const centerPoint = { lat: +center.lat.toFixed(3), lon: +center.lon.toFixed(3) };
+  const missing = [...points, centerPoint].filter((p) => !siteCache.has(key(p)));
+  if (missing.length) status(`Lade Wetter für ${missing.length} Orte …`);
   try {
-    const sites = await fetchWeather(points, dates, { demo: DEMO });
+    if (missing.length) {
+      const fetched = await fetchWeather(missing, dates, { demo: DEMO });
+      fetched.forEach((site, i) => siteCache.set(key(missing[i]), site));
+    }
     if (id !== loadId) return; // veraltete Antwort
-    state.sites = sites;
-    status(`${sites.length} Orte geladen${DEMO ? ' (Demo-Daten)' : ''}.`);
-    render();
+    state.sites = points.map((p) => siteCache.get(key(p))).filter(Boolean);
+    state.centerSite = siteCache.get(key(centerPoint)) || null;
+    state.step = step;
+    status(`${state.sites.length} Orte im Kartenausschnitt${DEMO ? ' (Demo-Daten)' : ''}.`);
+    if (popupOpen) pendingRender = true; else render(); // offenes Popup nicht wegrendern
   } catch (err) { if (id === loadId) status(err.message, true); }
 }
 
 function drawCenter() {
   centerLayer.clearLayers();
-  const { lat, lon } = state.center;
-  L.circle([lat, lon], { radius: state.radius * 1000, color: '#2563eb', weight: 1.5, dashArray: '6 6', fill: false, interactive: false }).addTo(centerLayer);
-  L.circleMarker([lat, lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: 1, interactive: false }).addTo(centerLayer);
+  const { lat, lon, label } = state.center;
+  L.circleMarker([lat, lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: 1 })
+    .bindTooltip(`Standort: ${label}`).addTo(centerLayer);
+}
+
+// ---------- Fahrzeit ----------
+const driveHtml = (d, to) => {
+  const { lat, lon, label } = state.center;
+  const gmaps = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${to.lat},${to.lon}&travelmode=driving`;
+  return `<div class="drive">🚗 ${d.estimated ? 'ca. ' : ''}${formatDrive(d)} ab ${label}`
+    + `${d.estimated ? ' <span class="muted">(Schätzung)</span>' : ''} · <a href="${gmaps}" target="_blank" rel="noopener">Route</a></div>`;
+};
+
+/** Popup mit Fahrzeit: zeigt sofort eine Schätzung und ersetzt sie durch die berechnete Route. */
+function bindDrivePopup(marker, to, contentFn, options) {
+  const from = { ...state.center };
+  marker.bindPopup(() => contentFn(driveHtml(estimateDrive(from, to), to)), options);
+  marker.on('popupopen', async (e) => {
+    const d = await drivingRoute(from, to);
+    if (!d.estimated && e.popup.isOpen()) e.popup.setContent(contentFn(driveHtml(d, to)));
+  });
+  return marker;
 }
 
 // ---------- Darstellung ----------
@@ -143,12 +177,12 @@ function render() {
     const days = siteDays(s, state.dates);
     return { site: s, days, ...scoreSite(state.activity, days, state.weights[state.activity]) };
   });
-  const cell = (stepFor(state.radius) * 1000) * 0.62;
+  const cell = state.step * 111320 * 0.6;
 
   scored.filter((x) => x.score >= state.min).forEach((x) => {
-    L.circle([x.site.lat, x.site.lon], {
+    bindDrivePopup(L.circle([x.site.lat, x.site.lon], {
       radius: cell, stroke: false, fillColor: colorFor(x.score), fillOpacity: 0.55,
-    }).bindPopup(() => popup(x), { minWidth: 320 }).on('popupopen', () => setPreview(x, 'ausgewählter Ort')).addTo(layer);
+    }), x.site, (drive) => popup(x, drive), { minWidth: 320 }).on('popupopen', () => setPreview(x, 'ausgewählter Ort')).addTo(layer);
   });
 
   const top = [...scored].sort((a, b) => b.score - a.score).slice(0, 8).filter((x) => x.score >= state.min);
@@ -156,21 +190,22 @@ function render() {
   if (!top.length) ol.innerHTML = '<li class="muted" style="list-style:none">Keine Orte über dem Mindest-Score – Slider senken oder anderen Zeitraum wählen.</li>';
   top.forEach((x, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<b style="color:${colorFor(x.score)}">${x.score}</b> ${Math.round(x.site.elevation)} m · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}`;
-    const m = L.marker([x.site.lat, x.site.lon], {
+    li.innerHTML = `<b style="color:${colorFor(x.score)}">${x.score}</b> ${Math.round(x.site.elevation)} m · 🚗 ca. ${formatDrive(estimateDrive(state.center, x.site))}`;
+    const m = bindDrivePopup(L.marker([x.site.lat, x.site.lon], {
       icon: L.divIcon({ className: '', html: `<div class="rank">${i + 1}</div>`, iconSize: [22, 22] }),
-    }).bindPopup(() => popup(x), { minWidth: 320 }).on('popupopen', () => setPreview(x, 'ausgewählter Ort')).addTo(layer);
+    }), x.site, (drive) => popup(x, drive), { minWidth: 320 }).on('popupopen', () => setPreview(x, 'ausgewählter Ort')).addTo(layer);
     li.onclick = () => { map.setView([x.site.lat, x.site.lon], Math.max(map.getZoom(), 9)); m.openPopup(); };
     ol.append(li);
   });
 
-  // Vorschau: ausgewählter Ort, sonst der Gitterpunkt am Standort
-  const cur = state.selected ? scored.find((x) => x.site === state.selected.site) : null;
-  const here = cur || scored.reduce((best, x) => (!best || d2(x.site, state.center) < d2(best.site, state.center) ? x : best), null);
-  if (here) setPreview(here, cur ? 'ausgewählter Ort' : 'am Standort', !!cur);
+  // Vorschau: ausgewählter Ort (auch außerhalb des Ausschnitts), sonst das Wetter am Standort
+  const pick = state.selected?.site || state.centerSite;
+  if (pick) {
+    const days = siteDays(pick, state.dates);
+    setPreview({ site: pick, days, ...scoreSite(state.activity, days, state.weights[state.activity]) },
+      state.selected ? 'ausgewählter Ort' : 'am Standort', !!state.selected);
+  }
 }
-
-const d2 = (a, c) => (a.lat - c.lat) ** 2 + (a.lon - c.lon) ** 2;
 
 function setPreview(x, title, keep = true) {
   if (keep) state.selected = x;
@@ -184,7 +219,7 @@ function setPreview(x, title, keep = true) {
       💨 ${Math.round(d.gust)} km/h</div>`).join('');
 }
 
-function popup(x) {
+function popup(x, drive = '') {
   const a = ACTIVITIES[state.activity];
   const rows = x.days.map((d, i) => `<tr>
       <td>${fmtDay(d.date)}</td><td>${WEATHER_EMOJI(d.code)}</td>
@@ -194,7 +229,7 @@ function popup(x) {
       <td>${Math.round(d.gust)} km/h</td>
       <td><b style="color:${colorFor(x.dayScores[i])}">${x.dayScores[i]}</b></td></tr>`).join('');
   return `<div class="pop"><b>${a.icon} ${a.label}: Score ${x.score}/100</b><br>
-    <span class="muted">${Math.round(x.site.elevation)} m ü. M. · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}</span>
+    <span class="muted">${Math.round(x.site.elevation)} m ü. M. · ${x.site.lat.toFixed(2)}, ${x.site.lon.toFixed(2)}</span>${drive}
     <table><tr><th>Tag</th><th></th><th>Temp</th><th>Regen</th><th>Schnee</th><th>Böen</th><th>Score</th></tr>${rows}</table></div>`;
 }
 
@@ -223,14 +258,14 @@ async function placeName(sp) {
   return placeCache.get(key);
 }
 
-function spotPopup(sp, name) {
+function spotPopup(sp, name, drive = '') {
   const T = SPOT_TYPES[sp.t];
   const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=13/${sp.lat}/${sp.lon}`;
   const wiki = sp.w ? ` · <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(sp.w.replaceAll(' ', '_'))}" target="_blank" rel="noopener">Wikipedia</a>` : '';
   const src = sp.note ? sp.note : sp.o ? 'Quelle: OpenStreetMap' : 'Quelle: Wikipedia';
   const disc = sp.d?.length ? `<br>Disziplinen: ${sp.d.map((d) => DISCIPLINES[d]).join(', ')}` : '';
   const routes = sp.r ? `<br>Routen: ${sp.r}` : '';
-  return `<b>${T.icon} <span class="spot-name">${name}</span></b><br><span class="muted">${T.label} · ${src}</span>${disc}${routes}<br>`
+  return `<b>${T.icon} <span class="spot-name">${name}</span></b><br><span class="muted">${T.label} · ${src}</span>${disc}${routes}${drive}`
     + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
 }
 
@@ -248,11 +283,15 @@ function spotMarker(sp) {
     title: sp.n || T.label,
     zIndexOffset: Math.min(est, 1000),
   });
-  m.bindPopup(spotPopup(sp, sp.n || fallback));
+  let name = sp.n || fallback;
+  bindDrivePopup(m, sp, (drive) => spotPopup(sp, name, drive));
   if (!sp.n) {
-    m.on('popupopen', async () => {
+    m.on('popupopen', async (e) => {
       const place = await placeName(sp);
-      if (place) m.getPopup().setContent(spotPopup(sp, `${T.label} bei ${place}`));
+      if (!place) return;
+      name = `${T.label} bei ${place}`;
+      const el = e.popup.getElement()?.querySelector('.spot-name');
+      if (el) el.textContent = name;
     });
   }
   return m;
@@ -285,5 +324,6 @@ async function loadSpots() {
   allSpots = lists.flat().filter((sp) => SPOT_TYPES[sp.t]);
   renderSpots();
 }
+drawCenter();
 loadSpots();
 load();

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTIVITIES, scoreSite } from '../js/activities.js';
-import { buildGrid, haversineKm } from '../js/geo.js';
+import { estimateDrive, formatDrive, gridForBounds } from '../js/geo.js';
 import { selectedDates, isoDate } from '../js/weather.js';
 
 const base = { tMax: 18, tMin: 8, precip: 0, rain: 0, snow: 0, pop: 5, wind: 10, gust: 20, sun: 8, prevPrecip: 0, elevation: 500 };
@@ -38,10 +38,27 @@ test('scoreSite: schlechtester Tag zieht den Gesamtscore runter', () => {
   assert.ok(mixed < good - 30);
 });
 
-test('buildGrid: Punkte liegen im Radius', () => {
-  const pts = buildGrid(48, 11, 200, 40);
-  assert.ok(pts.length > 20);
-  assert.ok(pts.every((p) => haversineKm(48, 11, p.lat, p.lon) <= 200.001));
+test('gridForBounds: Punkte im Ausschnitt, auf festem Raster, begrenzt', () => {
+  const b = { south: 46.3, west: 9.1, north: 49.2, east: 14.4 };
+  const { points, step, lonStep } = gridForBounds(b, 100);
+  assert.ok(points.length > 20 && points.length <= 100, `n=${points.length}`);
+  assert.ok(points.every((p) => p.lat >= b.south && p.lat <= b.north && p.lon >= b.west && p.lon <= b.east));
+  assert.ok(points.every((p) => Math.abs(p.lat / step - Math.round(p.lat / step)) < 1e-6));
+  // Verschobener Ausschnitt teilt sich Punkte mit dem alten (Cache-Wiederverwendung)
+  const moved = gridForBounds({ ...b, west: 9.6, east: 14.9 }, 100);
+  assert.equal(moved.step, step); assert.equal(moved.lonStep, lonStep);
+  const keys = new Set(points.map((p) => `${p.lat},${p.lon}`));
+  assert.ok(moved.points.filter((p) => keys.has(`${p.lat},${p.lon}`)).length > points.length / 2);
+  // Weit herausgezoomt: gröberes Raster statt mehr Punkte
+  assert.ok(gridForBounds({ south: 35, west: -10, north: 70, east: 40 }, 100).points.length <= 100);
+});
+
+test('estimateDrive / formatDrive: München → Innsbruck grob plausibel', () => {
+  const d = estimateDrive({ lat: 48.137, lon: 11.575 }, { lat: 47.269, lon: 11.404 });
+  assert.ok(d.km > 110 && d.km < 150, `km=${d.km}`);
+  assert.ok(d.min > 80 && d.min < 130, `min=${d.min}`);
+  assert.equal(formatDrive({ km: 187.4, min: 133 }), '2 h 15 min · 187 km');
+  assert.equal(formatDrive({ km: 30, min: 28 }), '30 min · 30 km');
 });
 
 test('selectedDates: Wochenende ± Fr/Mo', () => {

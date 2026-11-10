@@ -1,6 +1,6 @@
 # ⛅ WeatherPlanner
 
-Kartenbasierte Web-App: Standort eingeben, Umkreis (Regler 50–400 km) und Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und die Karte zeigt, **wo im Umkreis das Wetter für deine Aktivität am besten ist**.
+Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und die Karte zeigt, **wo im sichtbaren Kartenausschnitt das Wetter für deine Aktivität am besten ist**, inklusive Auto-Fahrzeit ab deinem Standort.
 
 | Aktivität | Wichtig |
 |---|---|
@@ -11,7 +11,9 @@ Kartenbasierte Web-App: Standort eingeben, Umkreis (Regler 50–400 km) und Zeit
 | 🏊 Baden / Seen | warm, sonnig, trocken, windarm |
 
 ## Wie es funktioniert
-- Rund um den Standort wird ein Gitter von Punkten gelegt (Abstand = Umkreis / 5).
+- Über den sichtbaren Kartenausschnitt wird ein Gitter von Punkten gelegt (max. ~100, Raster passt sich dem Zoom an). Verschieben/Zoomen lädt nur fehlende Punkte nach.
+- **Fahrzeit:** Klick auf einen Ort oder Spot zeigt Fahrzeit und Strecke mit dem Auto ab dem Standort (Routing über den öffentlichen [OSRM](https://project-osrm.org)-Demo-Server, ohne Key; fällt er aus, gibt es eine Schätzung aus der Luftlinie). Die Liste „Beste Orte“ zeigt immer die Schätzung.
+- Standort setzen: Ortssuche, 📍 oder Rechtsklick (lang drücken) auf die Karte.
 - Für alle Punkte werden Tagesvorhersagen von [Open-Meteo](https://open-meteo.com) geholt (kostenlos, **kein API-Key**), inkl. 2 Vortagen für Bodenfeuchte.
 - Pro Aktivität und Tag wird ein Score 0–100 berechnet (`js/activities.js`); der Gesamtscore ist Mittelwert, gewichtet mit dem schlechtesten Tag.
 - Farbige Kreise auf der Karte (rot → grün), Top-8-Liste, Klick auf einen Ort zeigt die Tageswerte.
