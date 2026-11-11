@@ -28,6 +28,7 @@ Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optio
 | `data/scraped-spots.json` | per Web-Scraping aus Wikipedia-Kategorien (MediaWiki-API) – Ski (AT/DE/CH), Klettern (DE/AT/IT/FR) |
 | `data/curated-spots.json` | von Hand ergänzt, **Koordinaten ungefähr**: MTB-Bikeparks, bekannte Klettergebiete, Skigebiete in IT/FR |
 
+| `data/tour-spots.json` | 585 Touren aus Auswahlführern (Im extremen Fels, Im schweren Fels, Moderne Zeiten, Longlines, Alpin Nordalpen, Alpines Genussklettern, Klettern im Sarcatal, Klettersteige), gebündelt zu 94 Spots je Gebirgsgruppe. Quelle: `data/sources/klettertouren.csv`; Zuordnung und Koordinaten der Gruppen in `data/sources/tour-areas.json` (von Hand, **Lage = Gebirgsgruppe, nicht die einzelne Wand**). Neu erzeugen: `npm run import:tours` |
 | `data/osm-spots.json` | Europa-weit aus OpenStreetMap (Overpass): Klettergebiete mit Disziplinen, Skigebiete – erzeugt mit `npm run scrape:osm` (Datei wird beim Scrapen erzeugt, ist noch nicht im Repo) |
 
 `npm run scrape:osm` (`scripts/scrape-osm.mjs`) lädt Europa in 5°-Kacheln, ist fortsetzbar (Cache in `data/.cache`), nutzt mehrere Overpass-Mirrors mit Retry/Backoff und fasst Duplikate zusammen. Daten © OpenStreetMap-Mitwirkende (ODbL).

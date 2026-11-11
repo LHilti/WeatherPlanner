@@ -9,6 +9,7 @@
     "start": "python3 -m http.server 8080",
     "test": "node --test test/*.test.js",
     "scrape": "node scripts/scrape-spots.mjs",
-    "scrape:osm": "node scripts/scrape-osm.mjs"
+    "scrape:osm": "node scripts/scrape-osm.mjs",
+    "import:tours": "node scripts/import-tours.mjs"
   }
 }

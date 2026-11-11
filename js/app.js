@@ -240,7 +240,8 @@ const SPOT_TYPES = {
   mtb: { label: 'MTB-Gebiet', icon: '🚵', color: '#16a34a' },
 };
 const ACTIVITY_SPOT = { climbing: 'climb', skiing: 'ski', mtb: 'mtb' }; // Wandern/Baden haben keine Spots
-const DISCIPLINES = { sport: 'Sportklettern', trad: 'Trad / Mobile Sicherung', alpine: 'Alpinklettern', boulder: 'Bouldern' };
+const DISCIPLINES = { sport: 'Sportklettern', trad: 'Trad / Mobile Sicherung', alpine: 'Alpinklettern', boulder: 'Bouldern', ferrata: 'Klettersteig' };
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const disciplineOn = new Set(Object.keys(DISCIPLINES));
 let allSpots = [];
 const spotLayer = L.markerClusterGroup ? L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 45 }).addTo(map) : L.layerGroup().addTo(map);
@@ -265,12 +266,19 @@ function spotPopup(sp, name, drive = '') {
   const src = sp.note ? sp.note : sp.o ? 'Quelle: OpenStreetMap' : 'Quelle: Wikipedia';
   const disc = sp.d?.length ? `<br>Disziplinen: ${sp.d.map((d) => DISCIPLINES[d]).join(', ')}` : '';
   const routes = sp.r ? `<br>Routen: ${sp.r}` : '';
-  return `<b>${T.icon} <span class="spot-name">${name}</span></b><br><span class="muted">${T.label} · ${src}</span>${disc}${routes}${drive}`
+  let tours = '';
+  if (sp.tours?.length) {
+    const bySeries = Map.groupBy(sp.tours, (t) => t.s);
+    tours = `<details class="tours"><summary>${sp.tours.length} Touren aus Auswahlführern</summary>${[...bySeries].map(([series, list]) =>
+      `<div class="series">${esc(series)}</div><ul>${list.map((t) =>
+        `<li>${esc(t.n)}${t.p ? ` <span class="muted">(${esc(t.p)})</span>` : ''}${t.g ? ` <span class="grade">${esc(t.g)}</span>` : ''}</li>`).join('')}</ul>`).join('')}</details>`;
+  }
+  return `<b>${T.icon} <span class="spot-name">${esc(name)}</span></b><br><span class="muted">${T.label} · ${src}</span>${disc}${routes}${drive}${tours}`
     + `<a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}`;
 }
 
 /** Geschätzte Gebietsgröße (Routen): echte Zahl aus OSM, sonst Näherung – Wikipedia-/kuratierte Gebiete sind meist bekannt und groß. */
-const sizeOf = (sp) => sp.r ?? (sp.w || sp.note ? 100 : sp.d?.length ? 15 : 5);
+const sizeOf = (sp) => sp.r ?? (sp.tours ? Math.max(100, sp.tours.length) : sp.w || sp.note ? 100 : sp.d?.length ? 15 : 5);
 
 function spotMarker(sp) {
   const T = SPOT_TYPES[sp.t];
@@ -284,7 +292,7 @@ function spotMarker(sp) {
     zIndexOffset: Math.min(est, 1000),
   });
   let name = sp.n || fallback;
-  bindDrivePopup(m, sp, (drive) => spotPopup(sp, name, drive));
+  bindDrivePopup(m, sp, (drive) => spotPopup(sp, name, drive), { minWidth: sp.tours ? 300 : 50, maxWidth: 360 });
   if (!sp.n) {
     m.on('popupopen', async (e) => {
       const place = await placeName(sp);
@@ -319,7 +327,7 @@ $('spots-on').onchange = renderSpots;
 $('min-routes').onchange = renderSpots;
 
 async function loadSpots() {
-  const files = ['data/scraped-spots.json', 'data/curated-spots.json', 'data/osm-spots.json'];
+  const files = ['data/scraped-spots.json', 'data/curated-spots.json', 'data/tour-spots.json', 'data/osm-spots.json'];
   const lists = await Promise.all(files.map((u) => fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
   allSpots = lists.flat().filter((sp) => SPOT_TYPES[sp.t]);
   renderSpots();

@@ -39,6 +39,12 @@ summary { cursor:pointer; color:var(--accent); font-size:13px; }
 .inline { display:block !important; font-weight:400 !important; }
 [hidden] { display:none !important; }
 .drive { margin:4px 0; }
+.tours { margin:4px 0 6px; }
+.tours ul { margin:2px 0 6px; padding-left:16px; }
+.tours > summary + * { margin-top:4px; }
+.tours[open] { max-height:240px; overflow-y:auto; }
+.tours .series { font-weight:600; margin-top:4px; }
+.tours .grade { color:var(--accent); white-space:nowrap; }
 .legend { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
 .legend i { flex:1; height:8px; border-radius:4px; background:linear-gradient(90deg,hsl(0 75% 50%),hsl(55 85% 50%),hsl(130 65% 40%)); }
 #top { margin:0; padding-left:22px; }
