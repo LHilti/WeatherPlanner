@@ -23,6 +23,9 @@ Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optio
 - **Spots:** Pins nur für die gewählte Aktivität (Klettern → Klettergebiete, Skifahren → Skigebiete, MTB → Bikeparks), gruppiert in Clustern. Beim Klettern lässt sich nach Disziplin filtern: Sportklettern, Trad, Alpin, Bouldern. Spots ohne Namen bekommen beim Klick per Ortssuche einen Namen („Klettergebiet bei …“).
 
 ## Spot-Daten
+Die App lädt nur `data/spots.json`. Diese Datei erzeugt `npm run build:spots` (`scripts/build-spots.mjs`) aus allen Quellen unten und führt doppelte Klettergebiete zusammen: Mountain Project hat Vorrang (genaue Koordinaten, Routenzahlen), kuratierte/Wikipedia-Einträge mit gleichem Namen in ≤ 30 km entfallen, OSM-Felsen < 1 km neben einem MP-Gebiet ebenfalls. Nach jeder Änderung an einer Quelle neu bauen.
+
+| `data/sources/mountainproject-europa.csv` | Export von Mountain Project (6.477 Gebiete/Sektoren in Europa). Pro Gebiet ein Pin auf Felsebene (Gebiet mit nur Sektoren = 1 Pin), Routenzahl, Disziplinen, Grad-Spanne, Link zu MP. Klettersteig-Ordner → Disziplin Klettersteig |
 | Datei | Inhalt |
 |---|---|
 | `data/scraped-spots.json` | per Web-Scraping aus Wikipedia-Kategorien (MediaWiki-API) – Ski (AT/DE/CH), Klettern (DE/AT/IT/FR) |

@@ -10,6 +10,7 @@
     "test": "node --test test/*.test.js",
     "scrape": "node scripts/scrape-spots.mjs",
     "scrape:osm": "node scripts/scrape-osm.mjs",
-    "import:tours": "node scripts/import-tours.mjs"
+    "import:tours": "node scripts/import-tours.mjs",
+    "build:spots": "node scripts/build-spots.mjs"
   }
 }

@@ -263,11 +263,15 @@ function spotPopup(sp, name, drive = '') {
   const T = SPOT_TYPES[sp.t];
   const osm = `https://www.openstreetmap.org/?mlat=${sp.lat}&mlon=${sp.lon}#map=13/${sp.lat}/${sp.lon}`;
   const wiki = sp.w ? ` · <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(sp.w.replaceAll(' ', '_'))}" target="_blank" rel="noopener">Wikipedia</a>` : '';
-  const src = sp.note ? sp.note : sp.o ? 'Quelle: OpenStreetMap' : 'Quelle: Wikipedia';
+  const src = sp.note ? sp.note : sp.mp ? `Quelle: <a href="https://www.mountainproject.com/area/${sp.mp}" target="_blank" rel="noopener">Mountain Project</a>${sp.region ? ` · ${esc(sp.region)}` : ''}` : sp.o ? 'Quelle: OpenStreetMap' : 'Quelle: Wikipedia';
   const disc = sp.d?.length ? `<br>Disziplinen: ${sp.d.map((d) => DISCIPLINES[d]).join(', ')}` : '';
-  const routes = sp.r ? `<br>Routen: ${sp.r}` : '';
+  const routes = sp.r ? `<br>Routen: ${sp.r}${sp.g ? ` · ${esc(sp.g)}` : ''}` : '';
   let tours = '';
-  if (sp.tours?.length) {
+  if (sp.sub?.length) {
+    tours = `<details class="tours"><summary>${sp.sub.length} Sektoren an dieser Stelle</summary><ul>${sp.sub.map((x) =>
+      `<li><a href="https://www.mountainproject.com/area/${x.mp}" target="_blank" rel="noopener">${esc(x.n)}</a> <span class="muted">(${x.r})</span></li>`).join('')}</ul></details>`;
+  }
+  if (!tours && sp.tours?.length) {
     const bySeries = Map.groupBy(sp.tours, (t) => t.s);
     tours = `<details class="tours"><summary>${sp.tours.length} Touren aus Auswahlführern</summary>${[...bySeries].map(([series, list]) =>
       `<div class="series">${esc(series)}</div><ul>${list.map((t) =>
@@ -327,9 +331,9 @@ $('spots-on').onchange = renderSpots;
 $('min-routes').onchange = renderSpots;
 
 async function loadSpots() {
-  const files = ['data/scraped-spots.json', 'data/curated-spots.json', 'data/tour-spots.json', 'data/osm-spots.json'];
-  const lists = await Promise.all(files.map((u) => fetch(u).then((r) => (r.ok ? r.json() : [])).catch(() => [])));
-  allSpots = lists.flat().filter((sp) => SPOT_TYPES[sp.t]);
+  // data/spots.json wird von `npm run build:spots` aus allen Quellen zusammengeführt (ohne Dubletten)
+  const list = await fetch('data/spots.json').then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  allSpots = list.filter((sp) => SPOT_TYPES[sp.t]);
   renderSpots();
 }
 drawCenter();
