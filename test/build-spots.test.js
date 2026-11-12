@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { dedupeAgainstMp, dedupeOsm, mergeSamePosition, mpCrags, sameName } from '../scripts/build-spots.mjs';
+import { dedupeAgainstMp, dedupeMirrors, dedupeOsm, mergeSamePosition, mpCrags, sameName } from '../scripts/build-spots.mjs';
 import { parseCsv } from '../scripts/import-tours.mjs';
 
 const row = (o) => ({ ID: '1', Name: '', 'Pfad (Region)': '', Ebene: '1', Typ: 'Gebiet', Breitengrad: '47', 'Längengrad': '11',
@@ -35,6 +35,8 @@ test('sameName: Alias, Akzente, markante Wörter', () => {
   assert.ok(sameName('Verdon Gorge', 'Gorge du Verdon'));
   assert.ok(sameName('Frankenjura (Pottenstein)', 'Frankenjura'));
   assert.ok(!sameName('Hohe Wand', 'Hohe Munde'));
+  assert.ok(sameName('Hohe Wand (mountain)', 'Hohe Wand'));
+  assert.ok(sameName('Arco', 'Arco and Surrounding Area'));
 });
 
 test('dedupeAgainstMp: Dublette fällt weg, Wikipedia-Link wandert zum MP-Pin; Tourenlisten bleiben', () => {
@@ -60,4 +62,30 @@ test('echte MP-Daten: Felsebene liefert sinnvolle Anzahl, keine Regionen-Pins', 
   assert.ok(!crags.some((c) => ['Frankenjura', 'Tirol', 'Germany'].includes(c.n)));
   assert.ok(crags.filter((c) => c.d?.includes('ferrata')).every((c) => /ferrata|klettersteig|\bVF\b/i.test(c.n)));
   assert.ok(crags.every((c) => c.r > 0 && Number.isFinite(c.lat) && Number.isFinite(c.lon)));
+});
+
+test('dedupeMirrors: gleichnamiger Eis-Spiegelordner < 1 km fällt weg', () => {
+  const out = dedupeMirrors([
+    { n: 'Index', lat: 45.9688, lon: 6.8726, r: 3, region: 'France > .Snow, Ice and Mixed > Mont Blanc Range', d: ['alpine'] },
+    { n: 'Index', lat: 45.9731, lon: 6.8737, r: 5, region: 'France > 04 Northern Alps > Chamonix', d: ['sport'] },
+    { n: 'Index', lat: 46.5, lon: 7, r: 2, region: 'Switzerland' },
+  ]);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out[0].d.sort(), ['alpine', 'sport']); assert.match(out[0].region, /Chamonix/);
+});
+
+test('dedupeAgainstMp: Region gleichen Namens ohne nahen Pin führt nicht zusammen; Attribute nur bis 3 km', () => {
+  const mpSpots = [{ n: 'Sobrio', lat: 46.40, lon: 8.95, t: 'climb', r: 10 }];
+  const nodes = [{ n: 'Ticino', lat: 46.3, lon: 8.9 }, { n: 'Sobrio', lat: 46.40, lon: 8.95 }];
+  const a = dedupeAgainstMp([{ n: 'Ticino (Chironico)', lat: 46.43, lon: 8.87, t: 'climb', d: ['boulder'] }], nodes, mpSpots);
+  assert.equal(a.kept.length, 0); // Sobrio ~7 km entfernt → abgedeckt
+  assert.equal(mpSpots[0].d, undefined); // aber > 3 km → keine Übernahme der Disziplin
+  const b = dedupeAgainstMp([{ n: 'Ticino (Chironico)', lat: 46.6, lon: 8.6, t: 'climb' }], nodes, mpSpots);
+  assert.equal(b.kept.length, 1); // kein MP-Pin in 8 km → bleibt
+});
+
+test('echte MP-Daten: keine Bundesland-Sammelpins für Klettersteige', async () => {
+  const rows = parseCsv(await readFile(new URL('../data/sources/mountainproject-europa.csv', import.meta.url), 'utf8'));
+  const c = mpCrags(rows);
+  assert.ok(!c.some((x) => /\* Via Ferrata$/.test(x.region) && /Steiermark|Tirol|Kärnten|Salzburg/.test(x.n)));
 });

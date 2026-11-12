@@ -9,6 +9,10 @@ import { haversineKm } from '../js/geo.js';
 
 // ---------- Mountain Project ----------
 
+const STATE_FOLDERS = new Set(['Burgenland', 'Kärnten', 'Niederösterreich', 'Oberösterreich', 'Salzburg', 'Steiermark', 'Tirol', 'Vorarlberg', 'Wien']);
+/** MP führt Eis-/Mixed-Gebiete teils doppelt in eigenen Ordnern („.Snow, Ice and Mixed“, „* Ice and Mixed“). */
+const MIRROR = /(^|> )[.*]\s*(Snow, )?Ice and Mixed/i;
+
 const num = (v) => (v === '' || v == null ? 0 : Number(v));
 
 /** Baum aus der flachen MP-Liste (Eltern über „Pfad (Region)“ + Name). */
@@ -52,6 +56,8 @@ export function mpCrags(rows) {
   }
   return [...crags]
     .filter((c) => num(c['Routen gesamt']) > 0)
+    // Bundesland-Sammelordner unter „* Via Ferrata“ haben nur Platzhalter-Koordinaten (Landeshauptstadt)
+    .filter((c) => !(/\* Via Ferrata$/.test(c['Pfad (Region)']) && STATE_FOLDERS.has(c.Name)))
     .map((c) => {
       const spot = {
         n: c.Name, lat: +Number(c.Breitengrad).toFixed(4), lon: +Number(c['Längengrad']).toFixed(4), t: 'climb',
@@ -62,13 +68,31 @@ export function mpCrags(rows) {
       // Klettersteig-Einträge heißen bei MP oft nur wie die Region („Tirol“, „Via Ferrata“) → lesbarer Name
       if (ferrata) {
         if (/^[*z. ]*via ferrata$/i.test(c.Name)) spot.n = `Klettersteige ${c['Pfad (Region)'].split(' > ').pop()}`; // generischer Ordner
-        else if (/\* Via Ferrata$/.test(c['Pfad (Region)'])) spot.n = `Klettersteige ${c.Name}`; // Bundesland-Ordner (AT)
         else if (!/ferrata|klettersteig|\bVF\b/i.test(c.Name)) spot.n = `${c.Name} (Klettersteig)`;
       }
       const g = [c['Grad-Spanne Seil'], c['Grad-Spanne Boulder'] && `Boulder ${c['Grad-Spanne Boulder']}`].filter(Boolean).join(' · ');
       if (g) spot.g = g;
       return spot;
     });
+}
+
+/** Gleichnamige MP-Pins < 1 km (Spiegelordner) zu einem zusammenfassen; der Nicht-Spiegel-Eintrag gewinnt. */
+export function dedupeMirrors(spots, maxKm = 1) {
+  const byName = new Map();
+  for (const s of spots) { const k = normName(s.n); if (!byName.has(k)) byName.set(k, []); byName.get(k).push(s); }
+  const drop = new Set();
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    for (const a of group) for (const b of group) {
+      if (a === b || drop.has(a) || drop.has(b) || haversineKm(a.lat, a.lon, b.lat, b.lon) > maxKm) continue;
+      const loser = MIRROR.test(a.region ?? '') && !MIRROR.test(b.region ?? '') ? a
+        : MIRROR.test(b.region ?? '') && !MIRROR.test(a.region ?? '') ? b : (a.r < b.r ? a : b);
+      const winner = loser === a ? b : a;
+      winner.d = [...new Set([...(winner.d ?? []), ...(loser.d ?? [])])];
+      drop.add(loser);
+    }
+  }
+  return spots.filter((s) => !drop.has(s));
 }
 
 /** Mehrere Crags mit identischer Position (MP vererbt Koordinaten) zu einem Pin zusammenfassen. */
@@ -104,6 +128,8 @@ const ALIASES = {
   'calanques (marseille)': 'calanques',
   'cresciano (tessin)': 'cresciano',
   'blautal / schwabische alb': 'schwabische alb',
+  arco: 'arco and surrounding area',
+  'dolomiten (cinque torri)': 'cinque torri',
 };
 
 export function normName(s) {
@@ -114,8 +140,10 @@ const tokens = (s) => normName(s).replace(/\([^)]*\)/g, ' ').split(/[^a-z0-9]+/)
 
 /** Gleiche Gegend? Namen teilen ein markantes Wort bzw. Alias passt. */
 export function sameName(a, b) {
-  const na = ALIASES[normName(a)] ?? normName(a); const nb = ALIASES[normName(b)] ?? normName(b);
-  if (na === nb) return true;
+  const canon = (x) => ALIASES[normName(x)] ?? normName(x);
+  const strip = (x) => x.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const na = canon(a); const nb = canon(b);
+  if (na === nb || strip(na) === strip(nb)) return true;
   const ta = tokens(na); const tb = new Set(tokens(nb));
   return ta.length > 0 && ta.some((t) => tb.has(t) && t.length >= 5);
 }
@@ -125,21 +153,23 @@ export function sameName(a, b) {
  * Abgleich gegen alle MP-Knoten (auch Regionen wie „Frankenjura“), Namen + max. 30 km Abstand.
  * Disziplinen und Wikipedia-Link gehen auf den nächstgelegenen MP-Pin über.
  */
-export function dedupeAgainstMp(spots, mpNodes, mpSpots, maxKm = 30) {
+export { haversineKm };
+export function dedupeAgainstMp(spots, mpNodes, mpSpots, maxKm = 30, coverKm = 8, transferKm = 3) {
   const kept = []; const dropped = [];
   for (const s of spots) {
     if (s.t !== 'climb' || s.tours) { kept.push(s); continue; }
     const match = mpNodes.find((m) => sameName(s.n, m.n) && haversineKm(s.lat, s.lon, m.lat, m.lon) <= maxKm);
-    if (!match) { kept.push(s); continue; }
     const near = mpSpots.reduce((best, m) => {
       const d = haversineKm(s.lat, s.lon, m.lat, m.lon);
       return !best || d < best.d ? { m, d } : best;
     }, null);
-    if (near && near.d <= maxKm) {
+    // Nur zusammenführen, wenn MP die Stelle auch wirklich mit einem Pin abdeckt (nicht bloß eine Region gleichen Namens)
+    if (!match || !near || near.d > coverKm) { kept.push(s); continue; }
+    if (near.d <= transferKm) {
       if (s.w && !near.m.w) near.m.w = s.w;
       if (s.d) near.m.d = [...new Set([...(near.m.d ?? []), ...s.d])];
     }
-    dropped.push({ n: s.n, matched: match.n, region: match.region });
+    dropped.push({ n: s.n, matched: match.n, region: match.region, km: near.d.toFixed(1) });
   }
   return { kept, dropped };
 }
@@ -167,7 +197,7 @@ async function main() {
   const data = new URL('../data/', import.meta.url);
   const json = async (f, d = []) => { try { return JSON.parse(await readFile(new URL(f, data), 'utf8')); } catch { return d; } };
   const rows = parseCsv(await readFile(new URL('sources/mountainproject-europa.csv', data), 'utf8'));
-  const mpSpots = mergeSamePosition(mpCrags(rows));
+  const mpSpots = mergeSamePosition(dedupeMirrors(mpCrags(rows)));
   const mpNodes = rows.filter((r) => num(r['Routen gesamt']) > 0)
     .map((r) => ({ n: r.Name, lat: +r.Breitengrad, lon: +r['Längengrad'], region: r['Pfad (Region)'] }));
 
@@ -180,7 +210,7 @@ async function main() {
   const by = (t) => all.filter((s) => s.t === t).length;
   console.log(`MP: ${rows.length} Einträge → ${mpSpots.length} Kletter-Pins`);
   console.log(`zusammengeführt (kuratiert/Wikipedia ⊂ MP): ${dropped.length}`);
-  dropped.forEach((d) => console.log(`  ${d.n}  →  ${d.matched} [${d.region}]`));
+  dropped.forEach((d) => console.log(`  ${d.n}  →  ${d.matched} [${d.region}], nächster MP-Pin ${d.km} km`));
   console.log(`spots.json: ${all.length} (Klettern ${by('climb')}, Ski ${by('ski')}, MTB ${by('mtb')}, OSM ${osm.length})`);
 }
 

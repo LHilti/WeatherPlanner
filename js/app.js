@@ -282,7 +282,8 @@ function spotPopup(sp, name, drive = '') {
 }
 
 /** Geschätzte Gebietsgröße (Routen): echte Zahl aus OSM, sonst Näherung – Wikipedia-/kuratierte Gebiete sind meist bekannt und groß. */
-const sizeOf = (sp) => sp.r ?? (sp.tours ? Math.max(100, sp.tours.length) : sp.w || sp.note ? 100 : sp.d?.length ? 15 : 5);
+// ohne Routenzahl: kuratierte/Wikipedia-Gebiete mittel (30), Tourenlisten nach Anzahl Touren
+const sizeOf = (sp) => sp.r ?? (sp.tours ? sp.tours.length : sp.w || sp.note ? 30 : sp.d?.length ? 15 : 5);
 
 function spotMarker(sp) {
   const T = SPOT_TYPES[sp.t];
