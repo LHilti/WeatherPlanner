@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIVITIES, scoreSite } from '../js/activities.js';
+import { ACTIVITIES, CLIMB_VARIANTS, scoreSite } from '../js/activities.js';
 import { estimateDrive, formatDrive, gridForBounds } from '../js/geo.js';
 import { selectedDates, isoDate } from '../js/weather.js';
 
@@ -74,4 +74,14 @@ test('Gewichtung: Faktor auf "Ignorieren" blendet Regen aus, höhere Gewichtung 
   assert.ok(ACTIVITIES.climbing.scoreDay(wet, { dry: 0 }) > normal);
   assert.ok(ACTIVITIES.climbing.scoreDay(wet, { dry: 3 }) <= normal);
   assert.equal(ACTIVITIES.climbing.scoreDay(wet, { dry: 0, rock: 0, temp: 0, wind: 0, sun: 0 }), 0);
+});
+
+test('Unterdisziplinen: Klettersteig straft Gewitter, Bouldern mag es kühl, Trad hasst nasse Vortage', () => {
+  const thunder = { ...base, code: 95, precip: 0.5, pop: 40 };
+  assert.ok(ACTIVITIES['climbing:ferrata'].scoreDay(thunder) < 40);
+  assert.ok(ACTIVITIES['climbing:ferrata'].scoreDay({ ...base, precip: 1.5, pop: 50 }) > ACTIVITIES['climbing:sport'].scoreDay({ ...base, precip: 1.5, pop: 50 }));
+  assert.ok(ACTIVITIES['climbing:boulder'].scoreDay({ ...base, tMax: 10 }) > ACTIVITIES['climbing:boulder'].scoreDay({ ...base, tMax: 27 }));
+  assert.ok(ACTIVITIES['climbing:trad'].scoreDay({ ...base, prevPrecip: 12 }) < ACTIVITIES['climbing:sport'].scoreDay({ ...base, prevPrecip: 12 }));
+  assert.equal(Object.keys(CLIMB_VARIANTS).length, 5);
+  assert.ok(scoreSite('climbing:alpine', [base]).score > 80);
 });

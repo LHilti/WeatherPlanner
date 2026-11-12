@@ -40,8 +40,8 @@ export const WEIGHT_LEVELS = [
  * Jede Aktivität besteht aus Faktoren (0–1) mit Standardgewicht `w`; die UI kann jeden Faktor
  * über einen Multiplikator (WEIGHT_LEVELS) stärker, schwächer oder gar nicht einfließen lassen.
  */
-const act = (label, icon, hint, factors) => ({
-  label, icon, hint, factors,
+const act = (label, icon, hint, factors, parent) => ({
+  label, icon, hint, factors, parent,
   scoreDay(d, mults = {}) {
     return combine(factors.map((f) => [f.fn(d), f.w * (mults[f.key] ?? 1)]));
   },
@@ -88,6 +88,52 @@ export const ACTIVITIES = {
       { key: 'wind', label: 'Wind / Böen', w: 0.7, fn: (d) => falling(d.gust, 30, 60) },
     ]),
 };
+
+// Gewitter-Faktor: Wettercode ≥ 95 (Gewitter) praktisch ausschließend, Schauer (80–86) abgewertet
+const storm = (d) => (d.code >= 95 ? 0.02 : d.code >= 80 ? 0.7 : 1);
+const climbDry = (d) => falling(d.precip, 0.2, 3) * (0.6 + 0.4 * falling(d.pop, 20, 70));
+
+/**
+ * Kletter-Unterdisziplinen mit eigener Bewertung. Die App nutzt sie, wenn bei „Klettern" genau eine
+ * Unterdisziplin gewählt ist (Schlüssel `climbing:<disziplin>`); bei mehreren gilt das allgemeine Profil.
+ */
+export const CLIMB_VARIANTS = {
+  sport: act('Sportklettern', '🧗', 'Trockener Fels, angenehme Temperatur, wenig Wind.', ACTIVITIES.climbing.factors, 'climbing'),
+  trad: act('Trad / Mobile Sicherung', '🧗',
+    'Wie Sportklettern, aber nasser Fels (Risse, Sandstein!) zählt noch stärker – Regen der Vortage wiegt schwer.', [
+      { key: 'dry', label: 'Trockenheit (Regen heute)', w: 3, fn: climbDry },
+      { key: 'rock', label: 'Fels trocken (Regen Vortage)', w: 2.5, fn: (d) => 0.4 + 0.6 * falling(d.prevPrecip, 1, 10) },
+      { key: 'temp', label: 'Temperatur', w: 1, fn: (d) => 0.3 + 0.7 * ramp(d.tMax, [-2, 8, 24, 34]) },
+      { key: 'wind', label: 'Wind / Böen', w: 0.7, fn: (d) => falling(d.gust, 35, 70) },
+      { key: 'sun', label: 'Sonne', w: 0.5, fn: (d) => 0.7 + 0.3 * rising(d.sun, 1, 6) },
+    ], 'climbing'),
+  alpine: act('Alpinklettern', '🏔️',
+    'Mehrseillängen im Gebirge: kein Gewitter, wenig Wind, trocken; kühler ist okay.', [
+      { key: 'dry', label: 'Trockenheit (Regen heute)', w: 3, fn: climbDry },
+      { key: 'storm', label: 'Kein Gewitter / Schauer', w: 2.5, fn: storm },
+      { key: 'wind', label: 'Wind / Böen', w: 1.5, fn: (d) => falling(d.gust, 30, 60) },
+      { key: 'rock', label: 'Fels trocken (Regen Vortage)', w: 1, fn: (d) => 0.6 + 0.4 * falling(d.prevPrecip, 2, 15) },
+      { key: 'temp', label: 'Temperatur', w: 1, fn: (d) => 0.3 + 0.7 * ramp(d.tMax, [-5, 4, 22, 32]) },
+      { key: 'sun', label: 'Sonne', w: 0.5, fn: (d) => 0.7 + 0.3 * rising(d.sun, 1, 6) },
+    ], 'climbing'),
+  boulder: act('Bouldern', '🪨',
+    'Trockener Fels und gute Reibung: eher kühl, keine Nässe der Vortage (Sandstein!).', [
+      { key: 'dry', label: 'Trockenheit (Regen heute)', w: 3, fn: climbDry },
+      { key: 'rock', label: 'Fels trocken (Regen Vortage)', w: 2, fn: (d) => 0.5 + 0.5 * falling(d.prevPrecip, 1, 12) },
+      { key: 'temp', label: 'Reibung (kühl ideal)', w: 1.5, fn: (d) => 0.2 + 0.8 * ramp(d.tMax, [-4, 4, 16, 28]) },
+      { key: 'wind', label: 'Wind / Böen', w: 0.3, fn: (d) => falling(d.gust, 40, 80) },
+      { key: 'sun', label: 'Sonne', w: 0.3, fn: (d) => 0.8 + 0.2 * rising(d.sun, 1, 6) },
+    ], 'climbing'),
+  ferrata: act('Klettersteig', '🪜',
+    'Gewitter ist das Hauptrisiko (Stahlseil!), dazu Wind; leichter Regen ist weniger kritisch als beim Klettern.', [
+      { key: 'storm', label: 'Kein Gewitter / Schauer', w: 3, fn: storm },
+      { key: 'dry', label: 'Trockenheit', w: 2, fn: (d) => falling(d.precip, 1, 8) * (0.7 + 0.3 * falling(d.pop, 30, 80)) },
+      { key: 'wind', label: 'Wind / Böen', w: 1.5, fn: (d) => falling(d.gust, 35, 70) },
+      { key: 'temp', label: 'Temperatur', w: 1, fn: (d) => ramp(d.tMax, [0, 6, 24, 32]) },
+      { key: 'sun', label: 'Sonne', w: 0.6, fn: (d) => 0.6 + 0.4 * rising(d.sun, 1, 7) },
+    ], 'climbing'),
+};
+for (const [k, v] of Object.entries(CLIMB_VARIANTS)) ACTIVITIES[`climbing:${k}`] = v;
 
 /**
  * Gesamtscore über mehrere Tage: Mittelwert, aber der schlechteste Tag zieht mit runter.

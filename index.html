@@ -42,6 +42,10 @@
     <section>
       <label>Aktivität</label>
       <div class="seg wrap" id="activity"></div>
+      <div id="subdisc-box" hidden>
+        <div class="sublabel">Unterdisziplin <span class="muted">(mehrere möglich)</span></div>
+        <div class="seg wrap chips" id="subdisc"></div>
+      </div>
       <div id="hint" class="muted"></div>
       <details id="weights">
         <summary>Gewichtung anpassen</summary>
@@ -69,7 +73,6 @@
     <section>
       <label>Spots auf der Karte</label>
       <label class="inline"><input type="checkbox" id="spots-on" checked> Spots zur gewählten Aktivität anzeigen</label>
-      <div id="disciplines" class="checks" hidden></div>
       <div id="size-filter" hidden>
         <label for="min-routes" class="inline">Mindestgröße (Routen)</label>
         <select id="min-routes">

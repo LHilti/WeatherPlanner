@@ -33,13 +33,32 @@ const status = (msg, err = false) => { $('status').textContent = msg; $('status'
 const fmtDay = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' });
 
 // ---------- UI ----------
-for (const [k, a] of Object.entries(ACTIVITIES)) {
+const SUBDISC = { sport: '🧗 Sportklettern', trad: '🔩 Trad', alpine: '🏔️ Alpinklettern', boulder: '🪨 Bouldern', ferrata: '🪜 Klettersteig' };
+const disciplineOn = new Set(Object.keys(SUBDISC));
+/** Bewertungsprofil: bei Klettern mit genau einer Unterdisziplin deren eigenes Profil. */
+const profile = () => (state.activity === 'climbing' && disciplineOn.size === 1 ? `climbing:${[...disciplineOn][0]}` : state.activity);
+for (const [k, a] of Object.entries(ACTIVITIES).filter(([, x]) => !x.parent)) {
   const b = document.createElement('button');
   b.dataset.v = k; b.textContent = `${a.icon} ${a.label}`;
   if (k === state.activity) b.classList.add('on');
   $('activity').append(b);
 }
-$('hint').textContent = ACTIVITIES[state.activity].hint;
+for (const [k, label] of Object.entries(SUBDISC)) {
+  const b = document.createElement('button'); b.dataset.v = k; b.textContent = label; b.className = 'on';
+  b.onclick = () => {
+    if (disciplineOn.has(k) && disciplineOn.size === 1) return; // mindestens eine bleibt aktiv
+    disciplineOn.has(k) ? disciplineOn.delete(k) : disciplineOn.add(k);
+    b.classList.toggle('on', disciplineOn.has(k));
+    profileChanged();
+  };
+  $('subdisc').append(b);
+}
+function profileChanged() {
+  $('subdisc-box').hidden = state.activity !== 'climbing';
+  const p = ACTIVITIES[profile()];
+  $('hint').textContent = p.parent ? `Bewertung für ${p.label}: ${p.hint}` : p.hint;
+  buildWeights(); render(); renderSpots();
+}
 
 function seg(id, onPick) {
   $(id).addEventListener('click', (e) => {
@@ -48,24 +67,23 @@ function seg(id, onPick) {
     onPick(b.dataset.v);
   });
 }
-seg('activity', (v) => { state.activity = v; $('hint').textContent = ACTIVITIES[v].hint; buildWeights(); render(); renderSpots(); });
-$('weights-reset').onclick = () => { delete state.weights[state.activity]; saveWeights(); buildWeights(); render(); };
+seg('activity', (v) => { state.activity = v; profileChanged(); });
+$('weights-reset').onclick = () => { delete state.weights[profile()]; saveWeights(); buildWeights(); render(); };
 
 function buildWeights() {
   const body = $('weights-body'); body.replaceChildren();
-  const mults = state.weights[state.activity] || {};
-  ACTIVITIES[state.activity].factors.forEach((f) => {
+  const mults = state.weights[profile()] || {};
+  ACTIVITIES[profile()].factors.forEach((f) => {
     const row = document.createElement('div'); row.className = 'wrow';
     const sel = document.createElement('select');
     WEIGHT_LEVELS.forEach((l) => sel.add(new Option(l.label, l.value, false, l.value === (mults[f.key] ?? 1))));
     sel.onchange = () => {
-      (state.weights[state.activity] ||= {})[f.key] = +sel.value;
+      (state.weights[profile()] ||= {})[f.key] = +sel.value;
       saveWeights(); render();
     };
     row.innerHTML = `<span>${f.label}</span>`; row.append(sel); body.append(row);
   });
 }
-buildWeights();
 $('week').onchange = (e) => { state.week = +e.target.value; load(); };
 $('fri').onchange = (e) => { state.friday = e.target.checked; load(); };
 $('mon').onchange = (e) => { state.monday = e.target.checked; load(); };
@@ -175,7 +193,7 @@ function render() {
   layer.clearLayers();
   const scored = state.sites.map((s) => {
     const days = siteDays(s, state.dates);
-    return { site: s, days, ...scoreSite(state.activity, days, state.weights[state.activity]) };
+    return { site: s, days, ...scoreSite(profile(), days, state.weights[profile()]) };
   });
   const cell = state.step * 111320 * 0.6;
 
@@ -202,7 +220,7 @@ function render() {
   const pick = state.selected?.site || state.centerSite;
   if (pick) {
     const days = siteDays(pick, state.dates);
-    setPreview({ site: pick, days, ...scoreSite(state.activity, days, state.weights[state.activity]) },
+    setPreview({ site: pick, days, ...scoreSite(profile(), days, state.weights[profile()]) },
       state.selected ? 'ausgewählter Ort' : 'am Standort', !!state.selected);
   }
 }
@@ -220,7 +238,7 @@ function setPreview(x, title, keep = true) {
 }
 
 function popup(x, drive = '') {
-  const a = ACTIVITIES[state.activity];
+  const a = ACTIVITIES[profile()];
   const rows = x.days.map((d, i) => `<tr>
       <td>${fmtDay(d.date)}</td><td>${WEATHER_EMOJI(d.code)}</td>
       <td>${Math.round(d.tMin)}…${Math.round(d.tMax)}°</td>
@@ -242,7 +260,6 @@ const SPOT_TYPES = {
 const ACTIVITY_SPOT = { climbing: 'climb', skiing: 'ski', mtb: 'mtb' }; // Wandern/Baden haben keine Spots
 const DISCIPLINES = { sport: 'Sportklettern', trad: 'Trad / Mobile Sicherung', alpine: 'Alpinklettern', boulder: 'Bouldern', ferrata: 'Klettersteig' };
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const disciplineOn = new Set(Object.keys(DISCIPLINES));
 let allSpots = [];
 const spotLayer = L.markerClusterGroup ? L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 45 }).addTo(map) : L.layerGroup().addTo(map);
 
@@ -313,7 +330,6 @@ function spotMarker(sp) {
 function renderSpots() {
   spotLayer.clearLayers();
   const type = ACTIVITY_SPOT[state.activity];
-  $('disciplines').hidden = type !== 'climb';
   $('size-filter').hidden = type !== 'climb';
   if (!$('spots-on').checked || !type) { $('spot-count').textContent = type ? '' : 'Für diese Aktivität gibt es keine Spot-Pins.'; return; }
   const shown = allSpots.filter((sp) => sp.t === type
@@ -322,12 +338,6 @@ function renderSpots() {
   $('spot-count').textContent = `${shown.length} ${SPOT_TYPES[type].label}e angezeigt`;
 }
 
-Object.entries(DISCIPLINES).forEach(([k, label]) => {
-  const lab = document.createElement('label'); lab.className = 'inline';
-  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
-  cb.onchange = () => { cb.checked ? disciplineOn.add(k) : disciplineOn.delete(k); renderSpots(); };
-  lab.append(cb, ` ${label}`); $('disciplines').append(lab);
-});
 $('spots-on').onchange = renderSpots;
 $('min-routes').onchange = renderSpots;
 
@@ -337,6 +347,7 @@ async function loadSpots() {
   allSpots = list.filter((sp) => SPOT_TYPES[sp.t]);
   renderSpots();
 }
+profileChanged();
 drawCenter();
 loadSpots();
 load();
