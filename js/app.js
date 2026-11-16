@@ -1,7 +1,8 @@
 import { ACTIVITIES, DEFAULT_CRITERIA, WEIGHT_LEVELS, customActivity, scoreSite } from './activities.js';
 import { drivingRoute, estimateDrive, formatDrive, geocode, gridForBounds } from './geo.js';
 import { LAYERS, SCORE_PALETTES, colorAt, gradientCss, gridIndex, renderHeat, sample } from './heat.js';
-import { fetchWeather, isoDate, selectedDates, siteDays, WEATHER_EMOJI } from './weather.js';
+import { createRangePicker, datesBetween } from './calendar.js';
+import { addDays, fetchWeather, isoDate, selectedDates, siteDays, WEATHER_EMOJI } from './weather.js';
 
 // ---------- Einstellungen (im Browser gespeichert) ----------
 const store = {
@@ -15,7 +16,7 @@ const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const state = {
   center: { lat: 48.137, lon: 11.575, label: 'München' },
   activity: 'climbing',
-  week: 0, friday: false, monday: false,
+  range: (() => { const d = selectedDates({}).map(isoDate); return { from: d[0], to: d[d.length - 1] }; })(), // Standard: nächstes Wochenende
   weights: store.get('wp-weights', {}),
   view: { layer: 'score', palette: 'blueRed', min: 0, opacity: 0.6, ...store.get('wp-view', {}) },
   custom: { on: false, criteria: structuredClone(DEFAULT_CRITERIA), ...store.get('wp-custom', {}) },
@@ -151,9 +152,12 @@ function buildWeights() {
 }
 
 // ---------- Zeitraum, Standort ----------
-$('week').onchange = (e) => { state.week = +e.target.value; load(); };
-$('fri').onchange = (e) => { state.friday = e.target.checked; load(); };
-$('mon').onchange = (e) => { state.monday = e.target.checked; load(); };
+// Kalender: wählbar ist das Vorhersagefenster (heute … +15 Tage)
+const today = new Date();
+createRangePicker($('calendar'), {
+  value: state.range, min: isoDate(today), max: isoDate(addDays(today, 15)),
+  onChange: (r) => { state.range = r; state.selected = null; load(); },
+});
 
 $('search').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -203,9 +207,8 @@ map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(load, 
 async function load() {
   const id = ++loadId;
   const { center } = state;
-  const dates = selectedDates({ weekOffset: state.week, friday: state.friday, monday: state.monday }).map(isoDate);
+  const dates = datesBetween(state.range.from, state.range.to);
   state.dates = dates;
-  $('dates').textContent = dates.map(fmtDay).join(' · ');
   $('center-label').textContent = `📍 ${center.label}`;
 
   const horizon = new Date(); horizon.setDate(horizon.getDate() + 15);

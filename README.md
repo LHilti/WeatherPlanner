@@ -1,6 +1,6 @@
 # ⛅ WeatherPlanner
 
-Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und eine **Heatmap** zeigt, **wo im sichtbaren Kartenausschnitt das Wetter für deine Aktivität am besten ist**. Ein Klick auf ein Gebiet (oder irgendwo in die Karte) zeigt das Wetter dort samt Auto-Fahrzeit ab deinem Standort.
+Kartenbasierte Web-App: Standort eingeben, Zeitraum im Kalender-Dropdown wählen (Standard: nächstes Wochenende; beliebige Tage im 16-Tage-Vorhersagefenster per Ziehen oder Start-/Endklick, dazu Schnellauswahl wie „Langes WE“) – und eine **Heatmap** zeigt, **wo im sichtbaren Kartenausschnitt das Wetter für deine Aktivität am besten ist**. Ein Klick auf ein Gebiet (oder irgendwo in die Karte) zeigt das Wetter dort samt Auto-Fahrzeit ab deinem Standort.
 
 | Aktivität | Wichtig |
 |---|---|

@@ -90,3 +90,25 @@ footer { margin-top:20px; font-size:11.5px; color:var(--muted); }
 /* Cluster neutral halten, damit sie nicht mit den Farben der Heatmap verwechselt werden */
 .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background-color:rgba(255,255,255,.55); }
 .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { background-color:#fff; color:#1b2430; border:2px solid #1b2430; font-weight:700; }
+
+/* Kalender-Dropdown */
+.cal { position:relative; }
+.cal-btn { width:100%; text-align:left; }
+.cal-pop { position:fixed; z-index:2000; overflow-y:auto; width:min(560px, calc(100vw - 32px)); background:var(--bg); border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.22); padding:12px; }
+.cal-presets { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.cal-presets button { padding:4px 10px; font-size:12.5px; border-radius:999px; }
+.cal-months { display:flex; flex-wrap:wrap; gap:16px; user-select:none; touch-action:none; }
+.cal-month { flex:1 1 230px; }
+.cal-title { font-weight:600; text-align:center; margin-bottom:6px; }
+.cal-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:2px 0; }
+.cal-wd { text-align:center; font-size:11px; color:var(--muted); padding-bottom:2px; }
+.cal-day { border:0; border-radius:0; background:none; padding:7px 0; font-size:13px; }
+.cal-day:disabled { color:var(--muted); opacity:.35; cursor:default; }
+.cal-day.wkend:not(:disabled) { font-weight:600; }
+.cal-day:not(:disabled):hover { background:var(--line); }
+.cal-day.in { background:color-mix(in srgb, var(--accent) 18%, transparent); }
+.cal-day.start, .cal-day.end { background:var(--accent); color:#fff; }
+.cal-day.start { border-radius:8px 0 0 8px; } .cal-day.end { border-radius:0 8px 8px 0; } .cal-day.start.end { border-radius:8px; }
+.cal-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.cal-ok { background:var(--accent); border-color:var(--accent); color:#fff; }
+.cal-hint { margin-top:6px; font-size:11.5px; }
