@@ -14,79 +14,113 @@
     <h1>⛅ WeatherPlanner</h1>
     <p class="sub">Wo ist am Wochenende das Wetter für deine Aktivität am besten?</p>
 
-    <section>
-      <label for="q">Standort</label>
-      <form id="search" autocomplete="off">
-        <input id="q" placeholder="Ort eingeben, z. B. München" required>
-        <button type="submit">Suchen</button>
-        <button type="button" id="locate" title="Meinen Standort verwenden">📍</button>
-      </form>
-      <ul id="results" hidden></ul>
-      <div id="center-label" class="muted"></div>
-      <div class="muted">Bewertet wird der sichtbare Kartenausschnitt – Karte verschieben/zoomen lädt nach. Rechtsklick (lang drücken) setzt den Standort; Fahrzeiten gelten ab Standort.</div>
-    </section>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="plan" class="on">Planen</button>
+      <button type="button" role="tab" data-tab="adv">Erweitert</button>
+    </nav>
 
-    <section>
-      <label>Zeitraum</label>
-      <select id="week">
-        <option value="0">Nächstes Wochenende</option>
-        <option value="1">Übernächstes Wochenende</option>
-      </select>
-      <div class="checks">
-        <label><input type="checkbox" id="fri"> + Freitag</label>
-        <label><input type="checkbox" id="mon"> + Montag</label>
-      </div>
-      <div id="dates" class="muted"></div>
-    </section>
+    <div class="tab" id="tab-plan">
+      <section>
+        <label for="q">Standort</label>
+        <form id="search" autocomplete="off">
+          <input id="q" placeholder="Ort eingeben, z. B. München" required>
+          <button type="submit">Suchen</button>
+          <button type="button" id="locate" title="Meinen Standort verwenden">📍</button>
+        </form>
+        <ul id="results" hidden></ul>
+        <div id="center-label" class="muted"></div>
+        <div class="muted">Die Farbfläche bewertet den sichtbaren Kartenausschnitt. Klick auf ein Gebiet oder irgendwo in die Karte zeigt das Wetter dort; Rechtsklick (lang drücken) setzt den Standort für die Fahrzeiten.</div>
+      </section>
 
-    <section>
-      <label>Aktivität</label>
-      <div class="seg wrap" id="activity"></div>
-      <div id="subdisc-box" hidden>
-        <div class="sublabel">Unterdisziplin <span class="muted">(mehrere möglich)</span></div>
-        <div class="seg wrap chips" id="subdisc"></div>
-      </div>
-      <div id="hint" class="muted"></div>
-      <details id="weights">
-        <summary>Gewichtung anpassen</summary>
-        <div id="weights-body"></div>
-        <button type="button" id="weights-reset">Zurücksetzen</button>
-      </details>
-    </section>
-
-    <section>
-      <label>Wettervorschau <span id="preview-title" class="muted"></span></label>
-      <div id="preview" class="muted">Lade …</div>
-    </section>
-
-    <section>
-      <label for="min">Mindest-Score: <b id="min-val">50</b></label>
-      <input type="range" id="min" min="0" max="90" step="5" value="50">
-      <div class="legend"><span>schlecht</span><i></i><span>top</span></div>
-    </section>
-
-    <section>
-      <label>Beste Orte</label>
-      <ol id="top"></ol>
-    </section>
-
-    <section>
-      <label>Spots auf der Karte</label>
-      <label class="inline"><input type="checkbox" id="spots-on" checked> Spots zur gewählten Aktivität anzeigen</label>
-      <div id="size-filter" hidden>
-        <label for="min-routes" class="inline">Mindestgröße (Routen)</label>
-        <select id="min-routes">
-          <option value="0">Alle Gebiete</option>
-          <option value="20">ab ca. 20 Routen</option>
-          <option value="100">ab ca. 100 Routen (große Gebiete)</option>
+      <section>
+        <label>Zeitraum</label>
+        <select id="week">
+          <option value="0">Nächstes Wochenende</option>
+          <option value="1">Übernächstes Wochenende</option>
         </select>
-      </div>
-      <div id="spot-count" class="muted"></div>
-      <div class="muted">Pins zeigen nur Gebiete der gewählten Aktivität. Quellen: Wikipedia, OpenStreetMap, kuratiert (Koordinaten ungefähr).</div>
-    </section>
+        <div class="checks">
+          <label><input type="checkbox" id="fri"> + Freitag</label>
+          <label><input type="checkbox" id="mon"> + Montag</label>
+        </div>
+        <div id="dates" class="muted"></div>
+      </section>
+
+      <section>
+        <label>Aktivität</label>
+        <div class="seg wrap" id="activity"></div>
+        <div id="subdisc-box" hidden>
+          <div class="sublabel">Unterdisziplin <span class="muted">(mehrere möglich)</span></div>
+          <div class="seg wrap chips" id="subdisc"></div>
+        </div>
+        <div id="hint" class="muted"></div>
+        <div id="custom-note" class="note" hidden>🎛️ Eigener Wetterfilter aktiv – Einstellungen unter „Erweitert“.</div>
+      </section>
+
+      <section>
+        <label>Wettervorschau <span id="preview-title" class="muted"></span></label>
+        <div id="preview" class="muted">Lade …</div>
+      </section>
+
+      <section>
+        <label id="top-label">Beste Gebiete im Ausschnitt</label>
+        <ol id="top"></ol>
+      </section>
+
+      <section>
+        <label>Gebiete auf der Karte</label>
+        <label class="inline"><input type="checkbox" id="spots-on" checked> Gebiete zur gewählten Aktivität anzeigen</label>
+        <div id="size-filter" hidden>
+          <label for="min-routes" class="inline">Mindestgröße (Routen)</label>
+          <select id="min-routes">
+            <option value="0">Alle Gebiete</option>
+            <option value="20">ab ca. 20 Routen</option>
+            <option value="100">ab ca. 100 Routen (große Gebiete)</option>
+          </select>
+        </div>
+        <div id="spot-count" class="muted"></div>
+      </section>
+    </div>
+
+    <div class="tab" id="tab-adv" hidden>
+      <section>
+        <label for="layer">Kartenlayer</label>
+        <select id="layer"></select>
+        <div class="muted">Zeigt statt des Scores einzelne Wettergrößen über die gewählten Tage.</div>
+      </section>
+
+      <section id="palette-box">
+        <label for="palette">Farbskala (Score)</label>
+        <select id="palette"></select>
+      </section>
+
+      <section id="min-box">
+        <label for="min">Mindest-Score: <b id="min-val">0</b></label>
+        <input type="range" id="min" min="0" max="90" step="5" value="0">
+        <div class="muted">Flächen unter dem Mindest-Score werden ausgeblendet.</div>
+      </section>
+
+      <section>
+        <label for="opacity">Deckkraft der Farbfläche: <b id="opacity-val">60</b> %</label>
+        <input type="range" id="opacity" min="20" max="90" step="5" value="60">
+      </section>
+
+      <section>
+        <label class="inline big-check"><input type="checkbox" id="custom-on"> <b>Eigener Wetterfilter</b></label>
+        <div class="muted">Ersetzt die Bewertung der Aktivität durch deine Kriterien. Die Gebiete der Aktivität bleiben sichtbar.</div>
+        <div id="criteria"></div>
+      </section>
+
+      <section>
+        <details id="weights">
+          <summary>Gewichtung der Aktivität anpassen</summary>
+          <div id="weights-body"></div>
+          <button type="button" id="weights-reset">Zurücksetzen</button>
+        </details>
+      </section>
+    </div>
 
     <div id="status" class="muted"></div>
-    <footer>Wetterdaten: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Karte: © OpenStreetMap</footer>
+    <footer>Wetterdaten: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Karte: © OpenStreetMap · Gebiete: Mountain Project, Wikipedia, OSM, Webrecherche</footer>
   </aside>
   <main id="map"></main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

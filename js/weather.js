@@ -46,7 +46,7 @@ function normalize(loc, lat, lon) {
 
 /** Holt Tageswerte für alle Punkte; `dates` sind ISO-Strings, 2 Vortage werden für Bodenfeuchte mitgeladen. */
 export async function fetchWeather(points, dates, { demo = false } = {}) {
-  const start = isoDate(addDays(new Date(dates[0] + 'T00:00:00'), -2));
+  const start = isoDate(addDays(new Date(dates[0] + 'T00:00:00'), -3)); // 3 Vortage: Nässe (Fels) und Frost (Eis)
   const end = dates[dates.length - 1];
   const chunks = [];
   for (let i = 0; i < points.length; i += BATCH) chunks.push(points.slice(i, i + BATCH));
@@ -68,12 +68,14 @@ export async function fetchWeather(points, dates, { demo = false } = {}) {
   return results.flat().map((loc) => normalize(loc, loc._p.lat, loc._p.lon));
 }
 
-/** Verknüpft Tageswerte der gewählten Tage mit „Niederschlag der 2 Vortage“. */
+/** Verknüpft Tageswerte der gewählten Tage mit „Niederschlag der 2 Vortage“ und „Ø Höchsttemperatur der 3 Vortage“. */
 export function siteDays(site, dates) {
   return dates.map((date) => {
     const i = site.days.findIndex((d) => d.date === date);
     const prev = site.days.slice(Math.max(0, i - 2), i).reduce((s, d) => s + d.precip, 0);
-    return { ...site.days[i], prevPrecip: prev };
+    const before = site.days.slice(Math.max(0, i - 3), i);
+    const prevTMax = before.length ? before.reduce((s, d) => s + d.tMax, 0) / before.length : site.days[i].tMax;
+    return { ...site.days[i], prevPrecip: prev, prevTMax };
   });
 }
 

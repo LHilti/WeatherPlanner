@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIVITIES, CLIMB_VARIANTS, scoreSite } from '../js/activities.js';
+import { ACTIVITIES, CLIMB_VARIANTS, DEFAULT_CRITERIA, customActivity, scoreSite } from '../js/activities.js';
 import { estimateDrive, formatDrive, gridForBounds } from '../js/geo.js';
 import { selectedDates, isoDate } from '../js/weather.js';
 
@@ -84,4 +84,22 @@ test('Unterdisziplinen: Klettersteig straft Gewitter, Bouldern mag es kühl, Tra
   assert.ok(ACTIVITIES['climbing:trad'].scoreDay({ ...base, prevPrecip: 12 }) < ACTIVITIES['climbing:sport'].scoreDay({ ...base, prevPrecip: 12 }));
   assert.equal(Object.keys(CLIMB_VARIANTS).length, 5);
   assert.ok(scoreSite('climbing:alpine', [base]).score > 80);
+});
+
+test('Eisklettern: Dauerfrost gut, Tauwetter und Regen schlecht', () => {
+  const frost = { ...base, tMax: -8, tMin: -15, prevTMax: -6, sun: 3, snow: 2 };
+  assert.ok(ACTIVITIES.ice.scoreDay(frost) > 85);
+  assert.ok(ACTIVITIES.ice.scoreDay({ ...frost, tMax: 6, prevTMax: 5 }) < 10);
+  assert.ok(ACTIVITIES.ice.scoreDay({ ...frost, rain: 4 }) < ACTIVITIES.ice.scoreDay(frost) - 30);
+  assert.ok(ACTIVITIES.ice.scoreDay({ ...frost, prevTMax: 3 }) < ACTIVITIES.ice.scoreDay(frost));
+});
+
+test('Eigener Filter: Kriterien steuern die Bewertung', () => {
+  const c = structuredClone(DEFAULT_CRITERIA);
+  const a = customActivity(c);
+  assert.equal(a.factors.length, 2);
+  assert.equal(scoreSite(a, [{ ...base, tMax: 18, precip: 0 }]).score, 100);
+  assert.ok(scoreSite(a, [{ ...base, tMax: 2, precip: 0 }]).score < 5);
+  c.sun.on = true; c.sun.min = 6;
+  assert.ok(scoreSite(customActivity(c), [{ ...base, sun: 2 }]).score < 30);
 });

@@ -1,6 +1,6 @@
 # ⛅ WeatherPlanner
 
-Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und die Karte zeigt, **wo im sichtbaren Kartenausschnitt das Wetter für deine Aktivität am besten ist**, inklusive Auto-Fahrzeit ab deinem Standort.
+Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optional + Freitag / + Montag) wählen – und eine **Heatmap** zeigt, **wo im sichtbaren Kartenausschnitt das Wetter für deine Aktivität am besten ist**. Ein Klick auf ein Gebiet (oder irgendwo in die Karte) zeigt das Wetter dort samt Auto-Fahrzeit ab deinem Standort.
 
 | Aktivität | Wichtig |
 |---|---|
@@ -8,9 +8,13 @@ Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optio
 | ⛷️ Skifahren | Höhenlage, Kälte, Neuschnee, wenig Regen/Wind, Sonne |
 | 🚵 Mountainbiken | wenig Regen, nicht aufgeweichte Trails, angenehme Temperatur |
 | 🥾 Wandern | trocken, nicht zu heiß, Sonne |
+| 🧊 Eisklettern | umgekehrt: Dauerfrost (auch an den 3 Vortagen), kein Regen, wenig Neuschnee, wenig Sonne |
 | 🏊 Baden / Seen | warm, sonnig, trocken, windarm |
 
 ## Wie es funktioniert
+- **Heatmap:** Über den sichtbaren Kartenausschnitt (plus Rand) wird ein Raster von Wetterpunkten gelegt (max. ~160) und bilinear zu einer Farbfläche interpoliert (`js/heat.js`). Standard-Farbskala: **Blau = nass/ungeeignet → Gelb → Rot = beste Bedingungen**; alternativ Ampel oder Viridis (farbenblind-freundlich). Legende unten rechts.
+- **Wetter am Gebiet:** Klick auf ein Gebiet lädt das Wetter genau an dieser Stelle (Score, Tagestabelle mit Temperatur, Niederschlag, Schnee, Sonne, Böen). Klick irgendwo in die Karte zeigt dasselbe für diesen Punkt. Die Liste „Beste Gebiete“ rankt die Gebiete im Ausschnitt nach dem Score der Farbfläche an ihrer Position.
+- **Reiter „Erweitert“:** Kartenlayer (Score oder einzelne Wettergrößen: Höchsttemperatur, Niederschlag, Sonnenstunden, Böen, Neuschnee), Farbskala, Mindest-Score, Deckkraft, **eigener Wetterfilter** (Temperaturbereich, max. Niederschlag, min. Sonne, max. Böen, min. Neuschnee – ersetzt die Bewertung der Aktivität) und die Gewichtung der Aktivität. Alles wird im Browser gespeichert.
 - Über den sichtbaren Kartenausschnitt wird ein Gitter von Punkten gelegt (max. ~100, Raster passt sich dem Zoom an). Verschieben/Zoomen lädt nur fehlende Punkte nach.
 - **Fahrzeit:** Klick auf einen Ort oder Spot zeigt Fahrzeit und Strecke mit dem Auto ab dem Standort (Routing über den öffentlichen [OSRM](https://project-osrm.org)-Demo-Server, ohne Key; fällt er aus, gibt es eine Schätzung aus der Luftlinie). Die Liste „Beste Orte“ zeigt immer die Schätzung.
 - Standort setzen: Ortssuche, 📍 oder Rechtsklick (lang drücken) auf die Karte.
@@ -25,6 +29,7 @@ Kartenbasierte Web-App: Standort eingeben, Zeitraum (nächstes Wochenende, optio
 ## Spot-Daten
 Die App lädt nur `data/spots.json`. Diese Datei erzeugt `npm run build:spots` (`scripts/build-spots.mjs`) aus allen Quellen unten und führt doppelte Klettergebiete zusammen: Mountain Project hat Vorrang (genaue Koordinaten, Routenzahlen), kuratierte/Wikipedia-Einträge mit gleichem Namen in ≤ 30 km entfallen, OSM-Felsen < 1 km neben einem MP-Gebiet ebenfalls. Nach jeder Änderung an einer Quelle neu bauen.
 
+| `data/sources/ice-areas.json` | 29 Eisklettergebiete aus Webrecherche (TinyFish; Quellen in der Datei), Lage = Ort/Tal per Open-Meteo-Geocoding. Dazu alle Mountain-Project-Gebiete mit Eis/Mixed-Routen (Disziplin „Eis/Mixed“) |
 | `data/sources/mountainproject-europa.csv` | Export von Mountain Project (6.477 Gebiete/Sektoren in Europa). Pro Gebiet ein Pin auf Felsebene (Gebiet mit nur Sektoren = 1 Pin), Routenzahl, Disziplinen, Grad-Spanne, Link zu MP. Klettersteig-Ordner → Disziplin Klettersteig |
 | Datei | Inhalt |
 |---|---|

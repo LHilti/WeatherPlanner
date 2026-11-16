@@ -35,7 +35,8 @@ export function mpDisciplines(r) {
   const d = [];
   if (num(r.Sport) > 0 || (num(r.Toprope) > 0 && !num(r.Trad))) d.push('sport');
   if (num(r.Trad) > 0) d.push('trad');
-  if (num(r['Eis/Mixed']) > 0 || r['MP-Subtyp'] === 'MOUNT') d.push('alpine');
+  if (r['MP-Subtyp'] === 'MOUNT') d.push('alpine');
+  if (num(r['Eis/Mixed']) > 0) d.push('ice');
   if (num(r.Boulder) > 0) d.push('boulder');
   return d;
 }
@@ -205,13 +206,15 @@ async function main() {
   const { kept, dropped } = dedupeAgainstMp(others, mpNodes, mpSpots);
   const osm = dedupeOsm(await json('osm-spots.json'), mpSpots);
 
-  const all = [...kept, ...mpSpots, ...osm];
+  const iceSrc = await json('sources/ice-areas.json', { areas: [] });
+  const ice = iceSrc.areas.map((a) => ({ n: a.n, lat: a.lat, lon: a.lon, t: 'ice', d: ['ice'], note: `Eisklettergebiet (Webrecherche), Lage = ${a.place}` }));
+  const all = [...kept, ...mpSpots, ...osm, ...ice];
   await writeFile(new URL('spots.json', data), JSON.stringify(all));
   const by = (t) => all.filter((s) => s.t === t).length;
   console.log(`MP: ${rows.length} Einträge → ${mpSpots.length} Kletter-Pins`);
   console.log(`zusammengeführt (kuratiert/Wikipedia ⊂ MP): ${dropped.length}`);
   dropped.forEach((d) => console.log(`  ${d.n}  →  ${d.matched} [${d.region}], nächster MP-Pin ${d.km} km`));
-  console.log(`spots.json: ${all.length} (Klettern ${by('climb')}, Ski ${by('ski')}, MTB ${by('mtb')}, OSM ${osm.length})`);
+  console.log(`spots.json: ${all.length} (Klettern ${by('climb')}, davon mit Eis/Mixed ${all.filter((x) => x.t === 'climb' && x.d?.includes('ice')).length}, Eis ${by('ice')}, Ski ${by('ski')}, MTB ${by('mtb')}, OSM ${osm.length})`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

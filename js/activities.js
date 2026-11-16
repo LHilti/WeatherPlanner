@@ -35,7 +35,8 @@ export const WEIGHT_LEVELS = [
 /**
  * Tageswerte (`d`):
  *  tMax, tMin (°C), precip (mm), rain (mm), snow (cm), pop (% Regenwahrscheinlichkeit),
- *  wind, gust (km/h), sun (Sonnenstunden), prevPrecip (mm in den 2 Tagen davor), elevation (m)
+ *  wind, gust (km/h), sun (Sonnenstunden), prevPrecip (mm in den 2 Tagen davor),
+ *  prevTMax (Ø Höchsttemperatur der 3 Tage davor, °C), elevation (m), code (WMO-Wettercode)
  *
  * Jede Aktivität besteht aus Faktoren (0–1) mit Standardgewicht `w`; die UI kann jeden Faktor
  * über einen Multiplikator (WEIGHT_LEVELS) stärker, schwächer oder gar nicht einfließen lassen.
@@ -79,6 +80,15 @@ export const ACTIVITIES = {
       { key: 'temp', label: 'Temperatur', w: 1.5, fn: (d) => ramp(d.tMax, [-2, 8, 22, 32]) },
       { key: 'wind', label: 'Wind / Böen', w: 0.8, fn: (d) => falling(d.gust, 35, 75) },
       { key: 'sun', label: 'Sonne', w: 1, fn: (d) => 0.6 + 0.4 * rising(d.sun, 1, 7) },
+    ]),
+  ice: act('Eisklettern', '🧊',
+    'Umgekehrt zum Felsklettern: anhaltender Frost (auch an den Vortagen), kein Regen aufs Eis, wenig Sonne, kein Wärmeeinbruch.', [
+      { key: 'cold', label: 'Frost (Höchsttemperatur)', w: 3, fn: (d) => ramp(d.tMax, [-Infinity, -Infinity, -3, 3]) },
+      { key: 'frost', label: 'Frost an den Vortagen (Eisaufbau)', w: 2.5, fn: (d) => ramp(d.prevTMax, [-Infinity, -Infinity, -2, 4]) },
+      { key: 'rain', label: 'Kein Regen', w: 1.5, fn: (d) => falling(d.rain, 0, 3) },
+      { key: 'snow', label: 'Wenig Neuschnee (Lawinen)', w: 1, fn: (d) => falling(d.snow, 10, 40) },
+      { key: 'sun', label: 'Wenig Sonne (Eis bleibt stabil)', w: 0.6, fn: (d) => 0.6 + 0.4 * falling(d.sun, 2, 8) },
+      { key: 'wind', label: 'Wind / Böen', w: 0.6, fn: (d) => falling(d.gust, 40, 80) },
     ]),
   swimming: act('Baden / Seen', '🏊',
     'Warm (ab ~24 °C), sonnig, trocken und windarm.', [
@@ -136,13 +146,35 @@ export const CLIMB_VARIANTS = {
 for (const [k, v] of Object.entries(CLIMB_VARIANTS)) ACTIVITIES[`climbing:${k}`] = v;
 
 /**
+ * Eigener Wetterfilter (Reiter „Erweitert"): jedes aktive Kriterium wird zu einem weichen Faktor,
+ * der im Wunschbereich 1 ist und außerhalb über eine Toleranz auf 0 fällt.
+ * criteria: { tmax: {on, min, max}, precip: {on, max}, sun: {on, min}, gust: {on, max}, snow: {on, min} }
+ */
+export const DEFAULT_CRITERIA = {
+  tmax: { on: true, min: 10, max: 25 },
+  precip: { on: true, max: 1 },
+  sun: { on: false, min: 4 },
+  gust: { on: false, max: 40 },
+  snow: { on: false, min: 5 },
+};
+export function customActivity(c) {
+  const f = [];
+  if (c.tmax?.on) f.push({ key: 'tmax', label: `Höchsttemperatur ${c.tmax.min}–${c.tmax.max} °C`, w: 1, fn: (d) => ramp(d.tMax, [c.tmax.min - 6, c.tmax.min, c.tmax.max, c.tmax.max + 6]) });
+  if (c.precip?.on) f.push({ key: 'precip', label: `Niederschlag ≤ ${c.precip.max} mm`, w: 1, fn: (d) => falling(d.precip, c.precip.max, c.precip.max + 5) });
+  if (c.sun?.on) f.push({ key: 'sun', label: `Sonne ≥ ${c.sun.min} h`, w: 1, fn: (d) => rising(d.sun, Math.max(0, c.sun.min - 3), c.sun.min) });
+  if (c.gust?.on) f.push({ key: 'gust', label: `Böen ≤ ${c.gust.max} km/h`, w: 1, fn: (d) => falling(d.gust, c.gust.max, c.gust.max + 25) });
+  if (c.snow?.on) f.push({ key: 'snow', label: `Neuschnee ≥ ${c.snow.min} cm`, w: 1, fn: (d) => rising(d.snow, 0, c.snow.min) });
+  return act('Eigener Filter', '🎛️', 'Bewertung nach deinen eigenen Wetterkriterien (Reiter „Erweitert").', f);
+}
+
+/**
  * Gesamtscore über mehrere Tage: Mittelwert, aber der schlechteste Tag zieht mit runter.
- * @param {string} activityKey
+ * @param {string|object} activityKey  Schlüssel in ACTIVITIES oder Aktivitätsobjekt (z. B. customActivity)
  * @param {object[]} days  Tageswerte (siehe oben)
  * @param {Object<string,number>} [mults]  Gewichts-Multiplikatoren je Faktor-Key
  */
 export function scoreSite(activityKey, days, mults = {}) {
-  const a = ACTIVITIES[activityKey];
+  const a = typeof activityKey === 'string' ? ACTIVITIES[activityKey] : activityKey;
   const dayScores = days.map((d) => a.scoreDay(d, mults));
   const mean = dayScores.reduce((x, y) => x + y, 0) / dayScores.length;
   const min = Math.min(...dayScores);
