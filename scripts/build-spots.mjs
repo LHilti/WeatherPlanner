@@ -6,6 +6,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { parseCsv } from './import-tours.mjs';
 import { haversineKm } from '../js/geo.js';
+import { loadRegions, regionFor } from './avalanche-regions.mjs';
 
 // ---------- Mountain Project ----------
 
@@ -207,8 +208,24 @@ async function main() {
   const osm = dedupeOsm(await json('osm-spots.json'), mpSpots);
 
   const iceSrc = await json('sources/ice-areas.json', { areas: [] });
-  const ice = iceSrc.areas.map((a) => ({ n: a.n, lat: a.lat, lon: a.lon, t: 'ice', d: ['ice'], note: `Eisklettergebiet (Webrecherche), Lage = ${a.place}` }));
+  // Recherchierte Eisgebiete, die Mountain Project schon als Eis/Mixed-Gebiet führt (gleicher Name, < 10 km), entfallen
+  const mpIce = mpSpots.filter((m) => m.d?.includes('ice'));
+  const ice = iceSrc.areas
+    .filter((a) => !mpIce.some((m) => sameName(a.n, m.n) && haversineKm(a.lat, a.lon, m.lat, m.lon) <= 10))
+    .map((a) => ({ n: a.n, lat: a.lat, lon: a.lon, t: 'ice', d: ['ice'], note: `Eisklettergebiet (Webrecherche), Lage = ${a.place}` }));
+  if (ice.length < iceSrc.areas.length) console.log(`Eisgebiete: ${iceSrc.areas.length - ice.length} schon in Mountain Project enthalten`);
   const all = [...kept, ...mpSpots, ...osm, ...ice];
+
+  // Lawinenregion (EAWS) für alle Eis-Spots
+  const regions = await loadRegions();
+  if (regions) {
+    let n = 0;
+    for (const s of all.filter((x) => x.t === 'ice' || x.d?.includes('ice'))) {
+      const r = regionFor(s.lat, s.lon, regions.features);
+      if (r) { s.ar = r.id; s.arn = regions.names[r.id] ?? r.id; n++; }
+    }
+    console.log(`Lawinenregionen: ${n} von ${all.filter((x) => x.t === 'ice' || x.d?.includes('ice')).length} Eis-Spots zugeordnet`);
+  } else console.warn('Keine Lawinenregionen im Cache – erst `npm run fetch:eaws` ausführen.');
   await writeFile(new URL('spots.json', data), JSON.stringify(all));
   const by = (t) => all.filter((s) => s.t === t).length;
   console.log(`MP: ${rows.length} Einträge → ${mpSpots.length} Kletter-Pins`);

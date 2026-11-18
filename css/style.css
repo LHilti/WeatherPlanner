@@ -113,17 +113,21 @@ footer { margin-top:20px; font-size:11.5px; color:var(--muted); }
 .cal-ok { background:var(--accent); border-color:var(--accent); color:#fff; }
 .cal-hint { margin-top:6px; font-size:11.5px; }
 
-/* Tages-Schieber auf der Karte */
-.map-days { background:var(--bg); color:var(--fg); padding:8px 12px 6px; border-radius:8px; box-shadow:0 1px 5px rgba(0,0,0,.35); font:12px/1.35 system-ui, sans-serif; width:min(360px, calc(100vw - 40px)); }
-.map-days .t { display:flex; justify-content:space-between; align-items:center; font-weight:600; }
-.map-days #day-play { padding:1px 8px; font-size:12px; }
-.map-days input[type=range] { width:100%; margin:6px 0 0; }
-.map-days .ticks { display:flex; justify-content:space-between; padding:0 2px; }
-.map-days .ticks button { border:0; background:none; padding:2px 2px; font-size:11px; color:var(--muted); min-width:0; }
-.map-days .ticks button.on { color:var(--accent); font-weight:700; }
+/* Tages-Schieber im Legenden-Kasten */
+.map-legend { width:min(320px, calc(100vw - 40px)); }
+.lg-days { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+.lg-days .t { display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+.lg-days #day-play { padding:1px 8px; font-size:12px; }
+.lg-days input[type=range] { width:100%; margin:6px 0 0; }
+.lg-days .ticks { display:flex; justify-content:space-between; padding:0 2px; }
+.lg-days .ticks button { border:0; background:none; padding:2px 2px; font-size:11px; color:var(--muted); min-width:0; }
+.lg-days .ticks button.on { color:var(--accent); font-weight:700; }
 .wx tr.sel td { background:color-mix(in srgb, var(--accent) 14%, transparent); }
 .day.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
-@media (max-width: 760px) {
-  .leaflet-bottom.leaflet-right { bottom:78px; } /* Legende über den Tages-Schieber */
-  .map-legend { min-width:0; max-width:calc(100vw - 40px); }
-}
+@media (max-width: 760px) { .map-legend { min-width:0; } }
+
+/* Lawinenlage im Popup */
+.av { margin-top:8px; padding-top:6px; border-top:1px solid var(--line); }
+.av-t { font-weight:600; margin-bottom:2px; }
+.av-tab td { padding:2px 6px 2px 0; }
+.av-badge { display:inline-block; padding:0 6px; border-radius:4px; font-weight:700; font-size:12px; line-height:18px; border:1px solid rgba(0,0,0,.25); }

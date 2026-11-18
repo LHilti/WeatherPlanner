@@ -1,6 +1,7 @@
 import { ACTIVITIES, DEFAULT_CRITERIA, WEIGHT_LEVELS, customActivity, scoreSite } from './activities.js';
 import { drivingRoute, estimateDrive, formatDrive, geocode, gridForBounds } from './geo.js';
 import { LAYERS, SCORE_PALETTES, colorAt, gradientCss, gridIndex, renderHeat, sample } from './heat.js';
+import { avalancheHtml, fetchRatings, regionDanger } from './avalanche.js';
 import { createRangePicker, datesBetween } from './calendar.js';
 import { addDays, fetchWeather, isoDate, selectedDates, siteDays, WEATHER_EMOJI } from './weather.js';
 
@@ -248,11 +249,21 @@ async function pointWeather(lat, lon) {
 
 // ---------- Heatmap + Legende ----------
 const legend = L.control({ position: 'bottomright' });
-legend.onAdd = () => { const d = L.DomUtil.create('div', 'map-legend'); L.DomEvent.disableClickPropagation(d); return d; };
+legend.onAdd = () => {
+  const d = L.DomUtil.create('div', 'map-legend');
+  L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+  d.innerHTML = `<div class="lg-body"></div>
+    <div class="lg-days">
+      <div class="t"><span id="day-label"></span><button type="button" id="day-play" title="Tage nacheinander abspielen">▶</button></div>
+      <input type="range" id="day-range" min="0" max="1" step="1" value="0" aria-label="Tag der Kartenanzeige">
+      <div class="ticks" id="day-ticks"></div>
+    </div>`;
+  return d;
+};
 legend.addTo(map);
 
 function updateLegend(def, stops) {
-  const el = legend.getContainer();
+  const el = legend.getContainer().querySelector('.lg-body');
   const isScore = state.view.layer === 'score';
   const title = isScore ? `${state.custom.on ? '🎛️ Eigener Filter' : `${scorer().icon} ${scorer().label}`} – Wetter-Score` : def.label;
   const ends = isScore ? ['ungeeignet', 'top'] : [`${def.min} ${def.unit}`, `${def.max} ${def.unit}`];
@@ -267,16 +278,6 @@ function updateLegend(def, stops) {
 /** Tageswerte für die Anzeige: alle Tage (Ø) oder nur der am Schieber gewählte Tag. */
 const pickDays = (days) => (state.dayIdx && days[state.dayIdx - 1] ? [days[state.dayIdx - 1]] : days);
 
-const daySlider = L.control({ position: 'bottomleft' });
-daySlider.onAdd = () => {
-  const d = L.DomUtil.create('div', 'map-days');
-  L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
-  d.innerHTML = `<div class="t"><span id="day-label"></span><button type="button" id="day-play" title="Tage nacheinander abspielen">▶</button></div>
-    <input type="range" id="day-range" min="0" max="1" step="1" value="0" aria-label="Tag der Kartenanzeige">
-    <div class="ticks" id="day-ticks"></div>`;
-  return d;
-};
-daySlider.addTo(map);
 $('day-range').oninput = (e) => { state.dayIdx = +e.target.value; stopPlay(); render(); };
 let playTimer = null;
 function stopPlay() { clearInterval(playTimer); playTimer = null; $('day-play').textContent = '▶'; }
@@ -382,14 +383,16 @@ function weatherBlock(site) {
 }
 
 /** Popup mit Fahrzeit und Wetter: Schätzung/Ladehinweis sofort, dann Route und Wetter nachladen. */
-function bindInfoPopup(layer, to, head, options) {
+function bindInfoPopup(layer, to, head, options, extra = null) {
   let drive = estimateDrive(state.center, to); let wx = '<div class="muted">Lade Wetter …</div>';
-  const html = () => `${head()}${driveHtml(drive, to)}${wx}`;
+  let ex = extra ? '<div class="muted">Lade Lawinenlage …</div>' : '';
+  const html = () => `${head()}${driveHtml(drive, to)}${wx}${ex}`;
   layer.bindPopup(() => html(), { minWidth: 330, maxWidth: 380, ...options });
   layer.on('popupopen', async (e) => {
     const refresh = () => { if (e.popup.isOpen()) e.popup.setContent(html()); };
     const from = { ...state.center };
     drivingRoute(from, to).then((d) => { drive = d; refresh(); });
+    if (extra) extra().then((h) => { ex = h; refresh(); }).catch(() => { ex = ''; refresh(); });
     try {
       const site = await pointWeather(to.lat, to.lon);
       wx = weatherBlock(site); refresh();
@@ -475,6 +478,17 @@ function spotInfo(sp, T) {
   return `<span class="muted">${T.label} · ${src}</span>${disc}${routes}${more}<div class="links"><a href="${osm}" target="_blank" rel="noopener">OpenStreetMap</a>${wiki}</div>`;
 }
 
+/** Lawinenlage (EAWS) für Eis-Spots: heute und morgen. */
+async function avalancheBlock(sp) {
+  if (!sp.ar) return '<div class="av muted">🏔️ Für diesen Ort gibt es keine EAWS-Lawinenwarnregion – regionalen Lagebericht prüfen.</div>';
+  const today = new Date(); const tomorrow = addDays(today, 1);
+  const days = await Promise.all([[today, 'Heute'], [tomorrow, 'Morgen']].map(async ([d, label]) => {
+    const date = isoDate(d);
+    return { label, date, danger: regionDanger(await fetchRatings(date), sp.ar) };
+  }));
+  return avalancheHtml(sp.ar, esc(sp.arn ?? sp.ar), days);
+}
+
 /** Geschätzte Gebietsgröße (Routen) für Pin-Größe und Filter. */
 const sizeOf = (sp) => sp.r ?? (sp.tours ? sp.tours.length : sp.w || sp.note ? 30 : sp.d?.length ? 15 : 5);
 
@@ -489,7 +503,8 @@ function spotMarker(sp, T) {
   });
   let name = sp.n || `${T.label} (${sp.lat.toFixed(2)}, ${sp.lon.toFixed(2)})`;
   const to = { lat: sp.lat, lon: sp.lon, n: name };
-  bindInfoPopup(m, to, () => `<b>${T.icon} ${esc(name)}</b><br>${spotInfo(sp, T)}`);
+  const isIce = sp.t === 'ice' || sp.d?.includes('ice');
+  bindInfoPopup(m, to, () => `<b>${T.icon} ${esc(name)}</b><br>${spotInfo(sp, T)}`, {}, isIce ? () => avalancheBlock(sp) : null);
   if (!sp.n) {
     m.on('popupopen', async (e) => {
       const place = await placeName(sp);
