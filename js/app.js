@@ -20,6 +20,7 @@ const state = {
   weights: store.get('wp-weights', {}),
   view: { layer: 'score', palette: 'blueRed', min: 0, opacity: 0.6, ...store.get('wp-view', {}) },
   custom: { on: false, criteria: structuredClone(DEFAULT_CRITERIA), ...store.get('wp-custom', {}) },
+  dayIdx: 0, // Tages-Schieber: 0 = Ø aller Tage, k = k-ter Tag
   selected: null, // Ort der Wettervorschau: { site, title } (null = Standort)
   sites: [], centerSite: null, dates: [], step: 0.5, lonStep: 0.75,
   scoreIdx: null, // interpoliertes Score-Raster für Ranking der Gebiete
@@ -156,7 +157,7 @@ function buildWeights() {
 const today = new Date();
 createRangePicker($('calendar'), {
   value: state.range, min: isoDate(today), max: isoDate(addDays(today, 15)),
-  onChange: (r) => { state.range = r; state.selected = null; load(); },
+  onChange: (r) => { state.range = r; state.selected = null; state.dayIdx = 0; load(); },
 });
 
 $('search').addEventListener('submit', async (e) => {
@@ -256,9 +257,50 @@ function updateLegend(def, stops) {
   const title = isScore ? `${state.custom.on ? '🎛️ Eigener Filter' : `${scorer().icon} ${scorer().label}`} – Wetter-Score` : def.label;
   const ends = isScore ? ['ungeeignet', 'top'] : [`${def.min} ${def.unit}`, `${def.max} ${def.unit}`];
   const extra = isScore && state.view.palette === 'blueRed' ? '<div class="muted">Blau = nass/ungeeignet · Rot = beste Bedingungen</div>' : '';
-  el.innerHTML = `<div class="t">${esc(title)}</div><div class="bar" style="background:${gradientCss(stops)}"></div>`
+  const when = state.dayIdx ? fmtDay(state.dates[state.dayIdx - 1]) : (state.dates.length > 1 ? `Ø ${state.dates.length} Tage` : fmtDay(state.dates[0] ?? ''));
+  el.innerHTML = `<div class="t">${esc(title)} <span class="muted">· ${when}</span></div><div class="bar" style="background:${gradientCss(stops)}"></div>`
     + `<div class="ends"><span>${ends[0]}</span><span>${ends[1]}</span></div>${extra}`
     + (isScore && state.view.min > 0 ? `<div class="muted">ausgeblendet: Score unter ${state.view.min}</div>` : '');
+}
+
+// ---------- Tages-Schieber ----------
+/** Tageswerte für die Anzeige: alle Tage (Ø) oder nur der am Schieber gewählte Tag. */
+const pickDays = (days) => (state.dayIdx && days[state.dayIdx - 1] ? [days[state.dayIdx - 1]] : days);
+
+const daySlider = L.control({ position: 'bottomleft' });
+daySlider.onAdd = () => {
+  const d = L.DomUtil.create('div', 'map-days');
+  L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+  d.innerHTML = `<div class="t"><span id="day-label"></span><button type="button" id="day-play" title="Tage nacheinander abspielen">▶</button></div>
+    <input type="range" id="day-range" min="0" max="1" step="1" value="0" aria-label="Tag der Kartenanzeige">
+    <div class="ticks" id="day-ticks"></div>`;
+  return d;
+};
+daySlider.addTo(map);
+$('day-range').oninput = (e) => { state.dayIdx = +e.target.value; stopPlay(); render(); };
+let playTimer = null;
+function stopPlay() { clearInterval(playTimer); playTimer = null; $('day-play').textContent = '▶'; }
+$('day-play').onclick = () => {
+  if (playTimer) return stopPlay();
+  $('day-play').textContent = '⏸';
+  playTimer = setInterval(() => {
+    state.dayIdx = state.dayIdx >= state.dates.length ? 0 : state.dayIdx + 1;
+    render();
+  }, 1200);
+};
+function updateDaySlider() {
+  const n = state.dates.length;
+  if (state.dayIdx > n) state.dayIdx = 0;
+  const r = $('day-range'); r.max = n; r.value = state.dayIdx; r.disabled = n < 2;
+  $('day-label').textContent = state.dayIdx ? `Tag ${state.dayIdx}/${n}: ${fmtDay(state.dates[state.dayIdx - 1])}` : `Ø alle ${n} Tage`;
+  const ticks = ['Ø', ...state.dates.map((d) => fmtDay(d).split(',')[0])];
+  const t = $('day-ticks');
+  if (t.dataset.k !== ticks.join()) {
+    t.dataset.k = ticks.join();
+    t.innerHTML = ticks.map((x, i) => `<button type="button" data-i="${i}">${x}</button>`).join('');
+    t.querySelectorAll('button').forEach((b) => { b.onclick = () => { state.dayIdx = +b.dataset.i; stopPlay(); render(); }; });
+  }
+  t.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.i === state.dayIdx));
 }
 
 function render() {
@@ -266,7 +308,7 @@ function render() {
   const isScore = state.view.layer === 'score';
   const stops = isScore ? scorePalette().stops : def.stops;
   const perSite = state.sites.map((s) => {
-    const days = siteDays(s, state.dates);
+    const days = pickDays(siteDays(s, state.dates)); // Schieber: alle Tage oder ein einzelner Tag
     return { site: s, days, ...scoreDays(days) };
   });
   state.scoreIdx = gridIndex(state.sites, perSite.map((x) => x.score), state.step, state.lonStep);
@@ -280,6 +322,7 @@ function render() {
     heatOverlay.setOpacity(state.view.opacity);
   }
   updateLegend(def, stops);
+  updateDaySlider();
   renderTop(perSite);
   renderPreview();
 }
@@ -325,7 +368,7 @@ function weatherBlock(site) {
   const [r, g, b] = scoreRgb(score);
   const light = 0.299 * r + 0.587 * g + 0.114 * b > 150;
   const a = scorer();
-  const rows = days.map((d, i) => `<tr>
+  const rows = days.map((d, i) => `<tr${state.dayIdx === i + 1 ? ' class="sel"' : ''}>
       <td>${fmtDay(d.date)}</td><td>${WEATHER_EMOJI(d.code)}</td>
       <td>${Math.round(d.tMin)}…${Math.round(d.tMax)}°</td>
       <td>${d.precip.toFixed(1)} mm</td>
@@ -378,7 +421,7 @@ function renderPreview() {
   const days = siteDays(pick, state.dates);
   const { dayScores } = scoreDays(days);
   $('preview-title').textContent = `· ${state.selected ? state.selected.title : 'am Standort'}`;
-  $('preview').innerHTML = days.map((d, i) => `<div class="day">
+  $('preview').innerHTML = days.map((d, i) => `<div class="day${state.dayIdx === i + 1 ? ' sel' : ''}">
       <span class="sc">${badge(dayScores[i])}</span>
       <div class="d">${fmtDay(d.date)}</div>
       <div class="big">${WEATHER_EMOJI(d.code)}</div>
